@@ -164,10 +164,13 @@ function handleInput(e) {
 	const value = isContentEditable ? target.textContent : target.value;
 
 	if (value.endsWith('//')) {
+		removeExistingShortcutMenu();
 		showShortcutMenu(target, isContentEditable);
 	} else if (value.endsWith('//notes')) {
+		removeExistingShortcutMenu();
 		showNotesPopup(target, isContentEditable);
 	} else if (value.endsWith('//clipboard')) {
+		removeExistingShortcutMenu();
 		showClipboardHistory(target, isContentEditable);
 	}
 
@@ -197,78 +200,74 @@ function handleInput(e) {
 	});
 }
 
-// Update click outside handling
-function addClickOutsideHandler(element, callback) {
-	const handleClickOutside = (e) => {
-		if (!element.contains(e.target)) {
-			callback();
-			document.removeEventListener('mousedown', handleClickOutside);
-		}
-	};
-	document.addEventListener('mousedown', handleClickOutside);
-}
-
-function showShortcutMenu(target, isContentEditable) {
+function showShortcutMenu(target, isContentEditable, filterVal = '') {
 	removeExistingShortcutMenu();
-	const menu = document.createElement('div');
-	menu.className = 'shortcut-menu';
 
+	const menu = document.createElement('div');
+	menu.className = 'menu';
+	const shortcutsMenu = document.createElement('div');
+	shortcutsMenu.className = 'shortcut-menu';
+	const tooltip = document.createElement('div');
+	tooltip.className = 'shortcut-tooltip';
+  
 	function renderShortcuts(filter = '') {
-		menu.innerHTML = '';
+    menu.innerHTML = '';
 		Object.entries(shortcuts).forEach(([key, value]) => {
-			if (
-				key.toLowerCase().includes(filter.toLowerCase()) ||
+      if (
+        key.toLowerCase().includes(filter.toLowerCase()) ||
 				value.toLowerCase().includes(filter.toLowerCase())
 			) {
+        // Create shortcut item
 				const item = document.createElement('div');
 				item.className = 'shortcut-menu-item';
 				item.textContent = key;
-
-				const tooltip = document.createElement('div');
-				tooltip.className = 'shortcut-tooltip';
-				item.appendChild(tooltip);
-
+        
+				// Show tooltip
 				item.addEventListener('mouseenter', () => {
-					tooltip.textContent = value;
+          tooltip.textContent = value;
 					tooltip.classList.add('visible');
 				});
-
+        
+				// Hide tooltip
 				item.addEventListener('mouseleave', () => {
+          tooltip.textContent = '';
 					tooltip.classList.remove('visible');
 				});
-
+        
+				// Replace shortcut and remove the menu
 				item.addEventListener('click', () => {
 					replaceShortcut(target, key, isContentEditable);
 					menu.remove();
 					// tooltip.remove();
 				});
-
-				menu.appendChild(item);
+        
+				shortcutsMenu.appendChild(item);
 			}
 		});
+		menu.appendChild(shortcutsMenu);
 	}
-
-	renderShortcuts();
-
+  
+	renderShortcuts(filterVal);
+  
 	// Position menu at cursor
 	const cursorPos = getCursorPosition(target);
 	if (cursorPos) {
-		const scrollY = window.scrollY;
+    const scrollY = window.scrollY;
 		menu.style.position = 'absolute';
 		menu.style.left = `${cursorPos.left}px`;
 		menu.style.top = `${cursorPos.top + cursorPos.height + scrollY}px`;
 	}
-
+  
 	document.body.appendChild(menu);
-	// searchInput.focus();
-
+  menu.appendChild(tooltip);
+  
 	// Handle click outside
 	document.addEventListener(
 		'click',
 		(e) => {
 			if (!menu.contains(e.target) && e.target !== target) {
 				menu.remove();
-				// tooltip.remove();
+				tooltip.remove();
 			}
 		},
 		{once: true}
