@@ -1,0 +1,294 @@
+:root {
+  --teal-50: #f0fdfa;
+  --teal-100: #ccfbf1;
+  --teal-200: #99f6e4;
+  --teal-300: #5eead4;
+  --teal-400: #2dd4bf;
+  --teal-500: #14b8a6;
+  --teal-600: #0d9488;
+  --teal-700: #0f766e;
+  --gray-50: #f9fafb;
+  --gray-100: #f3f4f6;
+  --gray-200: #e5e7eb;
+  --gray-300: #d1d5db;
+  --gray-400: #9ca3af;
+  --gray-500: #6b7280;
+  --gray-600: #4b5563;
+  --gray-700: #374151;
+  --gray-800: #1f2937;
+  --gray-900: #111827;
+  --shortcut-menu-bg: #ffffff;
+  --shortcut-menu-text: #333333;
+  --shortcut-menu-hover-bg: #f0f0f0;
+  --shortcut-menu-border: #cccccc;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  background-color: var(--teal-50);
+}
+
+::-webkit-scrollbar-thumb {
+  border-radius: 20px;
+  background-color: var(--gray-200);
+}
+
+*,
+*::before,
+*::after,
+*::marker {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  background-color: var(--gray-50);
+  color: var(--gray-900);
+  max-width: 600px;
+  width: 100%;
+  caret-color: var(--teal-500);
+}
+
+.app-container {
+  display: flex;
+  width: 600px;
+  height: 600px;
+  margin: 0 auto;
+  background-color: white;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  resize: both;
+  overflow: auto;
+  min-width: 400px;
+  min-height: 300px;
+}
+
+.sidebar {
+  width: 60px;
+  background-color: var(--gray-800);
+  padding: 1rem 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+}
+
+.sidebar-item {
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  color: var(--gray-400);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.sidebar-item:hover {
+  background-color: var(--gray-700);
+  color: white;
+}
+
+.sidebar-item.active {
+  background-color: var(--teal-500);
+  color: white;
+}
+
+.main-content {
+  flex: 1;
+  padding: 1.5rem;
+  overflow-y: auto;
+}
+
+.view {
+  display: none;
+}
+
+.view.active {
+  display: flex;
+  flex-flow: column nowrap;
+  align-items: start;
+  gap: 1.5rem;
+  width: 100%;
+}
+
+.search-container {
+  width: 100%;
+  display: flex;
+  flex-flow: column nowrap;
+  align-items: start;
+  gap: 0.75rem;
+  input {
+    width: 100%;
+    padding: 0.75rem;
+    border: 1px solid var(--gray-200);
+    border-radius: 8px;
+    font-size: 1rem;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+}
+
+.search-container input:focus {
+  border-color: var(--teal-500);
+}
+
+.add-shortcut-form,
+.add-note-form {
+  display: flex;
+  width: 100%;
+  flex-flow: column nowrap;
+  align-items: start;
+  gap: 1rem;
+  position: relative;
+  padding-bottom: 1.5rem;
+  border-bottom: 1px solid var(--gray-300);
+
+  .form-group {
+    width: 100%;
+  }
+}
+
+.form-group label {
+  display: block;
+  font-weight: 500;
+  font-size: 1.2rem;
+  color: var(--gray-900);
+  padding-bottom: 1rem;
+}
+
+.form-group input,
+.form-group textarea {
+  width: 100%;
+  padding: 0.75rem;
+  border: 1px solid var(--gray-200);
+  border-radius: 8px;
+  font-size: 1rem;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.form-group textarea {
+  min-height: 100px;
+  resize: vertical;
+}
+
+.form-group input:focus,
+.form-group textarea:focus {
+  border-color: var(--teal-500);
+}
+
+.btn-primary,
+.btn-secondary {
+  padding: 0.75rem 1.5rem;
+  border: none;
+  border-radius: 8px;
+  font-size: 1rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-primary {
+  background-color: var(--teal-500);
+  color: white;
+}
+
+.btn-primary:hover {
+  background-color: var(--teal-600);
+}
+
+.btn-secondary {
+  background-color: var(--gray-100);
+  color: var(--gray-700);
+}
+
+.btn-secondary:hover {
+  background-color: var(--gray-200);
+}
+
+.shortcuts-list,
+.notes-list,
+.clipboard-list {
+  /* margin-top: 2rem; */
+  width: 100%;
+}
+
+.action-btns {
+  display: flex;
+  flex-flow: row nowrap;
+  align-items: center;
+  gap: 0.5rem;
+
+  .edit-btn:hover {
+    color: var(--gray-100);
+    background-color: rgb(255, 207, 103);
+    transition: all 0.2s ease-in-out;
+  }
+
+  .delete-btn:hover {
+    color: var(--gray-100);
+    background-color: rgb(255, 103, 103);
+    transition: all 0.2s ease-in-out;
+  }
+}
+
+.shortcut-item,
+.note-item,
+.clipboard-item {
+  display: inline-flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  padding: 1rem;
+  border: 1px solid var(--gray-200);
+  border-radius: 8px;
+  margin-bottom: 1rem;
+  width: 100%;
+  background-color: white;
+  transition: all 0.2s;
+
+  button {
+    outline: none;
+    border: none;
+    width: 60px;
+    padding-block: 5px;
+    border-radius: 5px;
+    cursor: pointer;
+    color: var(--gray-700);
+    transition: all 0.2s ease-in-out;
+  }
+}
+
+.shortcut-item:hover,
+.note-item:hover,
+.clipboard-item:hover {
+  border-color: var(--teal-500);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+/* Settings styles */
+.settings-group {
+  /* margin-bottom: 1.5rem; */
+  display: flex;
+  /* justify-content: center; */
+  align-items: center;
+  gap: 1rem;
+}
+
+.settings-group label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+}
+
+.settings-group input[type="checkbox"] {
+  width: 1.25rem;
+  height: 1.25rem;
+  border: 2px solid var(--gray-300);
+  border-radius: 4px;
+  cursor: pointer;
+}
