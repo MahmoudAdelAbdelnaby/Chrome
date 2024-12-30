@@ -374,7 +374,15 @@ function showNotesPopup(target, isContentEditable) {
   updateSubtopics(topicSelect.value, subtopicSelect, presetText);
 
   // Add click outside handling
-  addClickOutsideHandler(popup, () => popup.remove());
+  document.addEventListener(
+    "click",
+    (e) => {
+      if (!popup.contains(e.target) && e.target !== target) {
+        popup.remove();
+      }
+    },
+    { once: true }
+  );
 }
 
 function createField(label, element) {
@@ -469,8 +477,6 @@ function showClipboardHistory(target, isContentEditable) {
     { once: true }
   );
 
-  // Add click outside handling
-  addClickOutsideHandler(menu, () => menu.remove());
 }
 
 // Fuzzy search function
