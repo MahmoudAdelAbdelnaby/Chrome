@@ -165,6 +165,8 @@ function handleInput(e) {
   const isContentEditable = target.isContentEditable;
   const value = isContentEditable ? target.textContent : target.value;
 
+  console.log("Input event triggered on:", target, "Value:", value);
+
   if (value.endsWith("//")) {
     removeExistingShortcutMenu();
     showShortcutMenu(target, isContentEditable);
@@ -186,7 +188,6 @@ function handleInput(e) {
       } else {
         target.value = newValue;
       }
-      // Set cursor position after the expanded text
       const newPosition = newValue.length;
       if (isContentEditable) {
         const range = document.createRange();
@@ -201,7 +202,6 @@ function handleInput(e) {
     }
   });
 }
-
 function showShortcutMenu(target, isContentEditable, filterVal = "") {
   removeExistingShortcutMenu();
 
@@ -442,36 +442,85 @@ function importNote(target, topic, subtopic, popup) {
 }
 
 function showClipboardHistory(target, isContentEditable) {
+  console.log("showClipboardHistory called");
+  console.log("clipboardHistory:", clipboardHistory);
+
   const menu = document.createElement("div");
   menu.className = "shortcut-menu";
+  console.log("Created menu element");
 
   clipboardHistory.forEach((item) => {
-    const truncatedItem =
-      item.length > 30 ? item.substring(0, 30) + "..." : item;
+    const truncatedItem = item.length > 30 ? item.substring(0, 30) + "..." : item;
     const element = document.createElement("div");
     element.className = "shortcut-menu-item";
     element.textContent = truncatedItem;
+    console.log("Created menu item:", truncatedItem);
+
     element.addEventListener("click", () => {
-      const value = target.value;
-      const newValue = value.replace(/\/\/clipboard\w*$/, item + " ");
-      target.value = newValue;
-      target.selectionStart = target.selectionEnd = newValue.length;
+      console.log("Menu item clicked:", item);
+      let newValue;
+
+      if (isContentEditable) {
+        // For contenteditable elements
+        const selection = window.getSelection();
+        const range = selection.getRangeAt(0);
+        const startOffset = range.startOffset;
+        const endOffset = range.endOffset;
+        const content = target.textContent;
+        const beforeCursor = content.substring(0, startOffset).replace(/\/\/clipboard\w*$/, '');
+        const afterCursor = content.substring(endOffset);
+
+        target.textContent = beforeCursor + item + afterCursor;
+        newValue = beforeCursor + item + afterCursor;
+
+        // Set cursor position after the inserted text
+        const newRange = document.createRange();
+        const textNode = target.firstChild || target;
+        const newPosition = beforeCursor.length + item.length;
+        newRange.setStart(textNode, newPosition);
+        newRange.setEnd(textNode, newPosition);
+        selection.removeAllRanges();
+        selection.addRange(newRange);
+      } else {
+        // For regular input elements
+        const value = target.value;
+        newValue = value.replace(/\/\/clipboard\w*$/, item + " ");
+        target.value = newValue;
+        target.selectionStart = target.selectionEnd = newValue.length;
+      }
+
+      // Focus the target element and set the cursor position
+      target.focus();
+
+      // Simulate space key press
+      const event = new KeyboardEvent('keydown', {
+        bubbles: true,
+        cancelable: true,
+        key: ' ',
+        code: 'Space'
+      });
+      target.dispatchEvent(event);
+
       menu.remove();
     });
     menu.appendChild(element);
   });
 
   const rect = target.getBoundingClientRect();
+  menu.style.position = "absolute";
   menu.style.left = `${rect.left}px`;
   menu.style.top = `${rect.bottom}px`;
+  console.log("Positioned menu at:", menu.style.left, menu.style.top);
 
   document.body.appendChild(menu);
+  console.log("Appended menu to the DOM");
 
   document.addEventListener(
     "click",
     (e) => {
       if (!menu.contains(e.target) && e.target !== target) {
         menu.remove();
+        console.log("Menu removed on click outside");
       }
     },
     { once: true }
