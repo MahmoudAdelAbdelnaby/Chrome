@@ -331,86 +331,68 @@ function replaceShortcut(target, key, isContentEditable) {
 }
 
 function showNotesPopup(target, isContentEditable) {
-  const popup = document.createElement('div');
-  popup.className = 'notes-popup';
+  const popup = document.createElement("div");
+  popup.className = "notes-popup";
   
-  popup.innerHTML = `
-    <div class="notes-popup-header">
-      <div class="notes-popup-logo">
-        <span>AX</span>
-      <div class="notes-popup-logo2">
-        <span>elerate</span>
-      <div class="notes-popup-logo3">
-        <span>Templates</span>
-      </div>
-      <div class="notes-popup-controls">
-        <button type="button" class="maximize-btn" title="Maximize">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M8 3v3a2 2 0 0 1-2 2H3m18 0h-3a2 2 0 0 1-2-2V3m0 18v-3a2 2 0 0 1 2-2h3M3 16h3a2 2 0 0 1 2 2v3"/>
-          </svg>
-        </button>
-        <button type="button" class="close-btn" title="Close">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M18 6L6 18M6 6l12 12"/>
-          </svg>
-        </button>
-      </div>
-    </div>
-    
-    <div class="notes-popup-main">
-      <div class="notes-popup-field">
-        <label>
-          Topic
-        </label>
-        <select id="topic-select"></select>
-      </div>
-      
-      <div class="notes-popup-field">
-        <label>
-          Subtopic
-        </label>
-        <select id="subtopic-select"></select>
-      </div>
-      
-      <div class="template-preview"></div>
-    </div>
-    
-    <div class="clipboard-history">
-      <h3>Clipboard history</h3>
-      <div class="clipboard-items"></div>
-    </div>
-    
-    <div class="notes-popup-actions">
-      <button type="button" class="cancel">Cancel</button>
-      <button type="button" class="import">Import Note</button>
+  // Create header with controls
+  const header = document.createElement("div");
+  header.className = "notes-popup-header";
+  header.innerHTML = `
+    <h2>Select Note</h2>
+    <div class="notes-popup-controls">
+      <button type="button" class="minimize-btn" title="Minimize">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M8 3v3a2 2 0 0 1-2 2H3m18 0h-3a2 2 0 0 1-2-2V3m0 18v-3a2 2 0 0 1 2-2h3M3 16h3a2 2 0 0 1 2 2v3"/>
+        </svg>
+      </button>
+      <button type="button" class="close-btn" title="Close">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M18 6L6 18M6 6l12 12"/>
+        </svg>
+      </button>
     </div>
   `;
 
+  const content = document.createElement("div");
+  content.className = "notes-popup-content";
+
+  const topicSelect = document.createElement("select");
+  const subtopicSelect = document.createElement("select");
+  const previewDiv = document.createElement("div");
+  previewDiv.className = "notes-popup-preview";
+
+  const actions = document.createElement("div");
+  actions.className = "notes-popup-actions";
+  actions.innerHTML = `
+    <button type="button" class="cancel">Cancel</button>
+    <button type="button" class="import">Import Note</button>
+  `;
+
+  content.appendChild(createField("Topic", topicSelect));
+  content.appendChild(createField("Subtopic", subtopicSelect));
+  content.appendChild(previewDiv);
+
+  popup.appendChild(header);
+  popup.appendChild(content);
+  popup.appendChild(actions);
+
   // Populate topic select
-  const topicSelect = popup.querySelector('#topic-select');
-  Object.keys(notes).forEach(topic => {
-    const option = document.createElement('option');
+  Object.keys(notes).forEach((topic) => {
+    const option = document.createElement("option");
     option.value = topic;
     option.textContent = topic;
     topicSelect.appendChild(option);
   });
 
   // Event listeners
-  const subtopicSelect = popup.querySelector('#subtopic-select');
-  const previewDiv = popup.querySelector('.template-preview');
-  
-  topicSelect.addEventListener('change', () => 
+  topicSelect.addEventListener("change", () =>
     updateSubtopics(topicSelect.value, subtopicSelect, previewDiv)
   );
   
-  subtopicSelect.addEventListener('change', () =>
+  subtopicSelect.addEventListener("change", () =>
     updatePresetText(topicSelect.value, subtopicSelect.value, previewDiv)
   );
 
-  // Clipboard history
-  const clipboardItems = popup.querySelector('.clipboard-items');
-  renderClipboardItems(clipboardItems);
-  
   // Minimize functionality
   let isMinimized = false;
   header.querySelector(".minimize-btn").addEventListener("click", () => {
@@ -425,13 +407,12 @@ function showNotesPopup(target, isContentEditable) {
     }
   });
 
-
   // Close and import actions
-  popup.querySelector('.cancel').addEventListener('click', () => popup.remove());
-  popup.querySelector('.close-btn').addEventListener('click', () => popup.remove());
-  popup.querySelector('.import').addEventListener('click', () => 
+  actions.querySelector(".cancel").addEventListener("click", () => popup.remove());
+  actions.querySelector(".import").addEventListener("click", () =>
     importNote(target, topicSelect.value, subtopicSelect.value, popup)
   );
+  header.querySelector(".close-btn").addEventListener("click", () => popup.remove());
 
   document.body.appendChild(popup);
   updateSubtopics(topicSelect.value, subtopicSelect, previewDiv);
@@ -448,40 +429,6 @@ function showNotesPopup(target, isContentEditable) {
   );
 
   return popup;
-}
-
-function renderClipboardItems(container) {
-  container.innerHTML = '';
-  clipboardHistory.forEach(item => {
-    const element = document.createElement('div');
-    element.className = 'clipboard-item';
-    element.textContent = item.length > 50 ? item.substring(0, 50) + '...' : item;
-    
-    element.addEventListener('click', () => {
-      navigator.clipboard.writeText(item).then(() => {
-        showCopyNotification();
-      });
-    });
-    
-    container.appendChild(element);
-  });
-}
-
-function showCopyNotification() {
-  const notification = document.createElement('div');
-  notification.className = 'copy-notification';
-  notification.textContent = 'Copied to clipboard';
-  
-  document.body.appendChild(notification);
-  
-  // Trigger animation
-  setTimeout(() => notification.classList.add('show'), 10);
-  
-  // Remove notification after animation
-  setTimeout(() => {
-    notification.classList.remove('show');
-    setTimeout(() => notification.remove(), 300);
-  }, 2000);
 }
 
 function createField(label, element) {

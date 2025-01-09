@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Text Expander</title>
+    <link rel="stylesheet" href="./popup.css" />
+  </head>
+  <body>
+    <div class="app-container">
+      <div class="sidebar">
+        <div class="sidebar-item active" data-view="shortcuts">
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            width="24"
+            height="24"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <path d="m18 7 4 2v11a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V9l4-2" />
+            <path d="M14 22v-4a2 2 0 0 0-2-2v0a2 2 0 0 0-2 2v4" />
+            <path d="M18 22V5l-6-3-6 3v17" />
+            <path d="M12 7v5" />
+            <path d="M10 9h4" />
+          </svg>
+        </div>
+        <div class="sidebar-item" data-view="notes">
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            width="24"
+            height="24"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <path
+              d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"
+            />
+            <line x1="2" y1="10" x2="22" y2="10" />
+          </svg>
+        </div>
+        <div class="sidebar-item" data-view="clipboard">
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            width="24"
+            height="24"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <path
+              d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"
+            />
+            <rect width="8" height="4" x="8" y="2" rx="1" ry="1" />
+          </svg>
+        </div>
+        <div class="sidebar-item" data-view="settings">
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            width="24"
+            height="24"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <path
+              d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"
+            />
+            <circle cx="12" cy="12" r="3" />
+          </svg>
+        </div>
+      </div>
+      <div class="main-content">
+        <div id="shortcuts-view" class="view active">
+          <h1 class="view-title">Shortcuts</h1>
+          <button id="import-shortcuts-btn" class="btn-secondary">
+            Import Shortcuts (CSV)
+          </button>
+          <div class="add-shortcut-form">
+            <div class="form-group">
+              <label for="shortcut-key">Shortcut</label>
+              <input type="text" id="shortcut-key" placeholder="e.g., w1" />
+            </div>
+            <div class="form-group">
+              <label for="shortcut-text">Text</label>
+              <textarea
+                id="shortcut-text"
+                placeholder="Enter the text for this shortcut"
+              ></textarea>
+            </div>
+            <button id="add-shortcut-btn" class="btn-primary">
+              Add Shortcut
+            </button>
+          </div>
+          <div class="search-container">
+            <input
+              type="text"
+              id="shortcut-search"
+              placeholder="Search shortcuts..."
+            />
+          </div>
+          <div id="shortcuts-list" class="shortcuts-list"></div>
+        </div>
+        <div id="notes-view" class="view">
+          <h1 class="view-title">Notes</h1>
+          <button id="export-notes-btn" class="btn-secondary">
+            Export Notes (CSV)
+          </button>
+          <div class="add-note-form">
+            <div class="form-group">
+              <label for="note-topic">Topic</label>
+              <input
+                type="text"
+                id="note-topic"
+                placeholder="e.g., Customer Service"
+              />
+            </div>
+            <div class="form-group">
+              <label for="note-subtopic">Subtopic</label>
+              <input
+                type="text"
+                id="note-subtopic"
+                placeholder="e.g., Greeting"
+              />
+            </div>
+            <div class="form-group">
+              <label for="note-template">Template</label>
+              <textarea
+                id="note-template"
+                placeholder="Enter template with {variables}"
+              ></textarea>
+            </div>
+            <button id="add-note-btn" class="btn-primary">Add Note</button>
+          </div>
+          <div class="search-container">
+            <input
+              type="text"
+              id="notes-search"
+              placeholder="Search notes..."
+            />
+          </div>
+          <div id="notes-list" class="notes-list"></div>
+        </div>
+        <div id="clipboard-view" class="view">
+          <h1 class="view-title">Clipboard</h1>
+          <div class="search-container">
+            <input
+              type="text"
+              id="clipboard-search"
+              placeholder="Search clipboard history..."
+            />
+            <button id="clear-clipboard-btn" class="btn-secondary">
+              Clear Clipboard History
+            </button>
+          </div>
+          <div id="clipboard-list" class="clipboard-list"></div>
+        </div>
+        <div id="settings-view" class="view">
+          <h1 class="view-title">Notes</h1>
+          <div class="settings-group">
+            <label>
+              <input type="checkbox" id="fuzzy-search" /> Enable fuzzy search
+            </label>
+          </div>
+          <div class="settings-group">
+            <button id="export-btn" class="btn-secondary">Export Data</button>
+            <button id="import-btn" class="btn-secondary">Import Data</button>
+            <input
+              type="file"
+              id="import-file"
+              accept=".json"
+              style="display: none;"
+            />
+          </div>
+        </div>
+      </div>
+    </div>
+    <!-- <script src="fuse.min.js"></script> -->
+    <script src="popup.js"></script>
+  </body>
+</html>
