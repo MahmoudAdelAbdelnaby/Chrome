@@ -108,16 +108,114 @@ document.addEventListener("keydown", (e) => {
 
 function handleKeydown(e) {
   const target = e.target;
-  const isContentEditable = target.isContentEditable;
-  const value = isContentEditable ? target.textContent : target.value;
+  const isContentEditable = isEditableElement(target);
+  const value = getElementValue(target);
 
-  if (e.key === "Enter" || e.key === " " || e.key === "Tab") {
-    const shortcutMatch = value.match(/\/\/(\w+)$/);
-    if (shortcutMatch) {
-      e.preventDefault();
-      const shortcutKey = shortcutMatch[1];
-      if (shortcuts[shortcutKey]) {
-        replaceShortcut(target, shortcutKey, isContentEditable);
+  // Check if it's a trigger key (space, enter, or tab)
+  if (e.key === 'Enter' || e.key === ' ' || e.key === 'Tab') {
+    // Look for any shortcut in the text
+    let shortcutMatch = null;
+    
+    // Check for shortcuts in different groups
+    for (const group in shortcuts) {
+      for (const shortcutKey in shortcuts[group]) {
+        const shortcutPattern = shortcutKey.replace('//', '');
+        
+        // Special handling for email composers and contenteditable elements
+        if (isContentEditable) {
+          const selection = window.getSelection();
+          if (selection.rangeCount) {
+            const range = selection.getRangeAt(0);
+            const container = range.startContainer;
+            
+            // Get text content up to cursor
+            let content;
+            if (container.nodeType === Node.TEXT_NODE) {
+              content = container.textContent.substring(0, range.startOffset);
+            } else {
+              const textContent = target.textContent || '';
+              content = textContent.substring(0, range.startOffset);
+            }
+            
+            // Check if content ends with the shortcut
+            if (content.endsWith('//' + shortcutPattern)) {
+              e.preventDefault();
+              e.stopPropagation();
+              
+              // Get the replacement text
+              const replacementText = shortcuts[group][shortcutKey];
+              
+              // Get full content
+              const fullContent = container.nodeType === Node.TEXT_NODE ? 
+                container.textContent : 
+                target.textContent;
+              
+              // Find the shortcut position
+              const shortcutIndex = content.lastIndexOf('//' + shortcutPattern);
+              const beforeShortcut = fullContent.substring(0, shortcutIndex);
+              const afterShortcut = fullContent.substring(shortcutIndex + shortcutPattern.length + 2);
+              
+              // Create new content
+              const newContent = beforeShortcut + replacementText + afterShortcut;
+              
+              // Update content
+              if (container.nodeType === Node.TEXT_NODE) {
+                container.textContent = newContent;
+              } else {
+                target.textContent = newContent;
+              }
+              
+              // Set cursor position
+              const newRange = document.createRange();
+              const textNode = container.nodeType === Node.TEXT_NODE ? 
+                container : 
+                target.firstChild || target;
+              
+              const newPosition = shortcutIndex + replacementText.length;
+              
+              try {
+                newRange.setStart(textNode, newPosition);
+                newRange.setEnd(textNode, newPosition);
+                selection.removeAllRanges();
+                selection.addRange(newRange);
+                
+                // Ensure focus remains on editor
+                target.focus();
+              } catch (err) {
+                console.error('Error setting cursor position:', err);
+              }
+              
+              closeActiveMenu();
+              return;
+            }
+          }
+        } else {
+          // Handle regular input fields (unchanged)
+          const pattern = new RegExp(`//${shortcutPattern}$`);
+          if (pattern.test(value)) {
+            e.preventDefault();
+            e.stopPropagation();
+            
+            const replacementText = shortcuts[group][shortcutKey];
+            const start = target.selectionStart;
+            const shortcutStart = value.lastIndexOf('//' + shortcutPattern);
+            
+            if (shortcutStart !== -1) {
+              const newValue = value.substring(0, shortcutStart) + 
+                             replacementText + 
+                             value.substring(start);
+              
+              target.value = newValue;
+              const newPosition = shortcutStart + replacementText.length;
+              target.selectionStart = newPosition;
+              target.selectionEnd = newPosition;
+              target.focus();
+            }
+            
+            closeActiveMenu();
+            return;
+          }
+        }
       }
     }
   }
@@ -214,31 +312,41 @@ function createMenu(target, isContentEditable) {
   content.className = 'menu-content';
   menu.appendChild(content);
 
-  // Position menu
-  const rect = target.getBoundingClientRect();
-  menu.style.position = 'fixed';
-  menu.style.left = `${rect.left}px`;
-  menu.style.top = `${rect.bottom + window.scrollY}px`;
-
-  // Event listeners
-  document.addEventListener('click', handleGlobalClick);
-  document.addEventListener('keydown', handleGlobalKeydown);
+  // Get cursor position
+  const cursorPosition = getCursorCoordinates(target, isContentEditable);
   
-  menu.cleanup = () => {
-    document.removeEventListener('click', handleGlobalClick);
-    document.removeEventListener('keydown', handleGlobalKeydown);
-  };
-
-  function handleGlobalClick(e) {
-    if (!menu.contains(e.target) && e.target !== target) {
-      closeActiveMenu();
+  // Position menu near cursor with fixed offset
+  if (cursorPosition) {
+    const { x, y } = cursorPosition;
+    menu.style.position = 'fixed';
+    
+    // Calculate position with fixed offset
+    const offsetX = 10; // Horizontal offset from cursor
+    const offsetY = 20; // Vertical offset from cursor
+    
+    // Check if menu would go off-screen
+    const menuWidth = 300;
+    const menuHeight = 300;
+    
+    let left = x + offsetX;
+    let top = y + offsetY;
+    
+    // Adjust if off screen right
+    if (left + menuWidth > window.innerWidth) {
+      left = x - menuWidth - offsetX;
     }
-  }
-
-  function handleGlobalKeydown(e) {
-    if (e.key === 'Escape') {
-      closeActiveMenu();
+    
+    // Adjust if off screen bottom
+    if (top + menuHeight > window.innerHeight) {
+      top = y - menuHeight - offsetY;
     }
+    
+    // Ensure menu doesn't go off screen left or top
+    left = Math.max(10, left);
+    top = Math.max(10, top);
+    
+    menu.style.left = `${left}px`;
+    menu.style.top = `${top}px`;
   }
 
   document.body.appendChild(menu);
@@ -434,69 +542,111 @@ function positionTooltip(item, tooltip) {
 }
 
 function insertText(target, text, isContentEditable) {
-  debug('Inserting text:', { target, text, isContentEditable });
-  
   try {
-    // First check if target is valid
-    if (!target) {
-      debug('No target element provided');
-      return;
-    }
+    if (!target) return;
 
-    // Handle contentEditable elements
-  if (isContentEditable) {
-    const selection = window.getSelection();
-      if (!selection || !selection.rangeCount) {
-        debug('No valid selection in contentEditable');
-        return;
-      }
+    if (isContentEditable) {
+      const selection = window.getSelection();
+      if (!selection?.rangeCount) return;
       
-    const range = selection.getRangeAt(0);
-      const content = target.textContent || '';
-    const shortcutIndex = content.lastIndexOf("//");
-
-    if (shortcutIndex !== -1) {
-      const beforeShortcut = content.substring(0, shortcutIndex);
-        const afterShortcut = content.substring(range.endOffset);
-        target.textContent = beforeShortcut + text + afterShortcut;
-
-        // Set cursor position after inserted text
-      const newRange = document.createRange();
-      const textNode = target.firstChild || target;
-        const newPosition = beforeShortcut.length + text.length;
-      newRange.setStart(textNode, newPosition);
-      newRange.setEnd(textNode, newPosition);
-      selection.removeAllRanges();
-      selection.addRange(newRange);
-    }
-    } 
-    // Handle input and textarea elements
-    else if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') {
-      if (typeof target.value !== 'string') {
-        debug('Target is not a valid input element');
-        return;
-      }
+      const range = selection.getRangeAt(0);
+      const container = range.startContainer;
       
-    const start = target.selectionStart;
-    const value = target.value;
-    const shortcutIndex = value.lastIndexOf("//", start);
+      // Special handling for TinyMCE
+      const isTinyMCE = target.closest('#tinymce') || target.id === 'tinymce';
+      
+      let content;
+      let startOffset;
+      
+      // Handle different node types and editors
+      if (container.nodeType === Node.TEXT_NODE) {
+        content = container.textContent;
+        startOffset = range.startOffset;
+      } else if (isTinyMCE) {
+        const editableDiv = container.nodeType === Node.ELEMENT_NODE ? 
+          container : 
+          container.parentElement;
+        
+        content = editableDiv.textContent;
+        startOffset = range.startOffset;
+      } else {
+        content = target.textContent;
+        startOffset = range.startOffset;
+      }
 
-    if (shortcutIndex !== -1) {
-        const newValue = value.substring(0, shortcutIndex) + text + value.substring(start);
-      target.value = newValue;
-        target.selectionStart = target.selectionEnd = shortcutIndex + text.length;
+      const beforeRange = content.substring(0, startOffset);
+      const shortcutIndex = beforeRange.lastIndexOf("//");
+
+      if (shortcutIndex !== -1) {
+        const beforeShortcut = content.substring(0, shortcutIndex);
+        const afterShortcut = content.substring(startOffset);
+        const newContent = beforeShortcut + text + afterShortcut;
+
+        if (isTinyMCE) {
+          const editableDiv = container.nodeType === Node.ELEMENT_NODE ? 
+            container : 
+            container.parentElement;
+          
+          editableDiv.textContent = newContent;
+          
+          const newRange = document.createRange();
+          const textNode = editableDiv.firstChild || editableDiv;
+          const newPosition = shortcutIndex + text.length;
+          
+          try {
+            newRange.setStart(textNode, newPosition);
+            newRange.setEnd(textNode, newPosition);
+            selection.removeAllRanges();
+            selection.addRange(newRange);
+            editableDiv.focus();
+          } catch (e) {
+            console.error('Error setting cursor position:', e);
+          }
+        } else {
+          if (container.nodeType === Node.TEXT_NODE) {
+            container.textContent = newContent;
+          } else {
+            target.textContent = newContent;
+          }
+
+          const newRange = document.createRange();
+          const textNode = container.nodeType === Node.TEXT_NODE ? 
+            container : 
+            target.firstChild || target;
+          const newPosition = shortcutIndex + text.length;
+          
+          newRange.setStart(textNode, newPosition);
+          newRange.setEnd(textNode, newPosition);
+          selection.removeAllRanges();
+          selection.addRange(newRange);
+        }
+      }
+    } else {
+      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') {
+        const start = target.selectionStart;
+        const value = target.value;
+        const shortcutIndex = value.lastIndexOf("//", start);
+
+        if (shortcutIndex !== -1) {
+          const newValue = value.substring(0, shortcutIndex) + text + value.substring(start);
+          target.value = newValue;
+          
+          const newPosition = shortcutIndex + text.length;
+          target.selectionStart = newPosition;
+          target.selectionEnd = newPosition;
+          
+          target.focus();
+          
+          if (target.tagName === 'TEXTAREA') {
+            const lineHeight = parseInt(window.getComputedStyle(target).lineHeight);
+            const lines = target.value.substr(0, newPosition).split('\n').length;
+            target.scrollTop = (lines - 1) * lineHeight;
+          }
+        }
       }
     }
-    // Handle other elements
-    else {
-      debug('Target is not a supported element type:', target.tagName);
-      return;
-    }
-    
-    debug('Text insertion complete');
   } catch (error) {
-    debug('Error inserting text:', error);
-    console.error(error);
+    console.error('Error inserting text:', error);
   }
 }
 
@@ -904,12 +1054,13 @@ function showClipboardHistory(target, isContentEditable) {
   // Store the original trigger element
   menu.triggerElement = target;
 
+  // Add menu content...
   if (clipboardHistory.length === 0) {
     const emptyMessage = document.createElement('div');
     emptyMessage.className = 'clipboard-empty';
     emptyMessage.textContent = 'No clipboard history';
     menu.appendChild(emptyMessage);
-      } else {
+  } else {
     clipboardHistory.forEach((text) => {
       const item = document.createElement('div');
       item.className = 'clipboard-item';
@@ -925,20 +1076,36 @@ function showClipboardHistory(target, isContentEditable) {
     });
   }
 
-  // Position menu
-  const rect = target.getBoundingClientRect();
-  menu.style.position = 'fixed';
-  menu.style.left = `${rect.left}px`;
-  menu.style.top = `${rect.bottom + window.scrollY}px`;
+  // Position menu near cursor
+  const cursorPosition = getCursorCoordinates(target, isContentEditable);
+  if (cursorPosition) {
+    const { x, y } = cursorPosition;
+    menu.style.position = 'fixed';
+    
+    // Check boundaries and adjust position
+    const menuWidth = 300; // Approximate menu width
+    const menuHeight = Math.min(clipboardHistory.length * 40, 300); // Approximate menu height
+    
+    if (x + menuWidth > window.innerWidth) {
+      menu.style.left = `${window.innerWidth - menuWidth - 20}px`;
+    } else {
+      menu.style.left = `${x}px`;
+    }
+    
+    if (y + menuHeight > window.innerHeight) {
+      menu.style.top = `${y - menuHeight - 10}px`;
+    } else {
+      menu.style.top = `${y + 20}px`;
+    }
+  }
 
-  // Handle click outside
+  // Add event listeners...
   document.addEventListener('click', (e) => {
-      if (!menu.contains(e.target) && e.target !== target) {
-        menu.remove();
+    if (!menu.contains(e.target) && e.target !== target) {
+      menu.remove();
     }
   }, { once: true });
 
-  // Handle escape key
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') {
       menu.remove();
@@ -1075,6 +1242,184 @@ function updateTemplatePreview(template, popup) {
       templatePreview.appendChild(input);
     }
   });
+}
+
+// Enhanced input detection
+function setupInputListeners() {
+  // Create a MutationObserver to watch for new elements
+  const observer = new MutationObserver((mutations) => {
+    mutations.forEach((mutation) => {
+      if (mutation.addedNodes) {
+        mutation.addedNodes.forEach((node) => {
+          if (node.nodeType === 1) { // Check if it's an element node
+            // Check the added node itself
+            if (isTextInput(node)) {
+              attachInputListeners(node);
+            }
+            // Check children of the added node
+            node.querySelectorAll('*').forEach(element => {
+              if (isTextInput(element)) {
+                attachInputListeners(element);
+              }
+            });
+          }
+        });
+      }
+    });
+  });
+
+  // Start observing the whole document
+  observer.observe(document.body, {
+    childList: true,
+    subtree: true,
+    attributes: true,
+    attributeFilter: ['contenteditable']
+  });
+
+  // Initial setup for existing elements
+  document.querySelectorAll('*').forEach(element => {
+    if (isTextInput(element)) {
+      attachInputListeners(element);
+    }
+  });
+}
+
+// Helper function to check if an element is a text input
+function isTextInput(element) {
+  return (
+    element.tagName === 'INPUT' && (element.type === 'text' || element.type === 'search') ||
+    element.tagName === 'TEXTAREA' ||
+    element.getAttribute('contenteditable') === 'true' ||
+    element.role === 'textbox' ||
+    element.getAttribute('aria-multiline') === 'true' ||
+    (window.getComputedStyle(element).webkitUserModify || '').indexOf('write') > -1
+  );
+}
+
+// Attach input listeners to an element
+function attachInputListeners(element) {
+  // Remove existing listeners to prevent duplicates
+  element.removeEventListener('input', handleInput);
+  element.removeEventListener('keydown', handleKeydown);
+  
+  // Add listeners
+  element.addEventListener('input', handleInput);
+  element.addEventListener('keydown', handleKeydown);
+  
+  // Add focus listener to handle cursor position
+  element.addEventListener('focus', () => {
+    lastFocusedElement = element;
+  });
+}
+
+// Modified handleInput function
+function handleInput(e) {
+  const target = e.target;
+  const value = getElementValue(target);
+  const isContentEditable = isEditableElement(target);
+
+  debug('Input event:', { value, isContentEditable });
+
+  // Check for shortcut pattern
+  const match = value.match(/\/\/(\w*)$/);
+  
+  if (!match) {
+    closeActiveMenu();
+    return;
+  }
+
+  const searchTerm = match[1].toLowerCase();
+  debug('Search term:', searchTerm);
+
+  // Handle special commands
+  if (value.endsWith("//notes")) {
+    closeActiveMenu();
+    showNotesPopup(target, isContentEditable);
+    return;
+  }
+
+  if (value.endsWith("//clipboard")) {
+    closeActiveMenu();
+    showClipboardHistory(target, isContentEditable);
+    return;
+  }
+
+  updateOrCreateMenu(target, isContentEditable, searchTerm);
+}
+
+// Helper function to get element value
+function getElementValue(element) {
+  if (element.isContentEditable || element.getAttribute('contenteditable') === 'true') {
+    return element.textContent || element.innerText;
+  }
+  return element.value || '';
+}
+
+// Helper function to check if element is editable
+function isEditableElement(element) {
+  return element.isContentEditable || 
+         element.getAttribute('contenteditable') === 'true' ||
+         element.role === 'textbox' ||
+         element.getAttribute('aria-multiline') === 'true' ||
+         element.id === 'tinymce' ||  // Add TinyMCE check
+         element.closest('#tinymce');  // Check for TinyMCE parent
+}
+
+// Initialize when the page loads
+document.addEventListener('DOMContentLoaded', setupInputListeners);
+
+// Also initialize immediately in case the page is already loaded
+if (document.readyState === 'complete' || document.readyState === 'interactive') {
+  setupInputListeners();
+}
+
+// Add this new function to get cursor coordinates
+function getCursorCoordinates(element, isContentEditable) {
+  if (isContentEditable) {
+    const selection = window.getSelection();
+    if (selection.rangeCount) {
+      const range = selection.getRangeAt(0);
+      const rect = range.getBoundingClientRect();
+      return {
+        x: rect.left + window.scrollX,
+        y: rect.top + window.scrollY
+      };
+    }
+  } else {
+    // For regular input elements
+    if (element.selectionStart || element.selectionStart === 0) {
+      // Create a dummy element to measure text
+      const dummy = document.createElement('div');
+      const computedStyle = window.getComputedStyle(element);
+      
+      // Copy styles that affect text measurement
+      dummy.style.font = computedStyle.font;
+      dummy.style.whiteSpace = 'pre-wrap';
+      dummy.style.position = 'absolute';
+      dummy.style.visibility = 'hidden';
+      
+      // Get text before cursor
+      const textBeforeCursor = element.value.substring(0, element.selectionStart);
+      dummy.textContent = textBeforeCursor;
+      
+      document.body.appendChild(dummy);
+      const dummyRect = dummy.getBoundingClientRect();
+      const elementRect = element.getBoundingClientRect();
+      document.body.removeChild(dummy);
+      
+      return {
+        x: elementRect.left + dummyRect.width,
+        y: elementRect.top + (elementRect.height / 2)
+      };
+    }
+  }
+  
+  // Fallback to element position if we can't get cursor position
+  const rect = element.getBoundingClientRect();
+  return {
+    x: rect.left,
+    y: rect.bottom
+  };
 }
 
 
