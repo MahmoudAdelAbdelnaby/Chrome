@@ -16,9 +16,22 @@ function loadData() {
     clipboardHistory = result.clipboardHistory || [];
     fuzzySearch = result.fuzzySearch || false;
     renderShortcuts();
+    populateShortcutGroups();
     renderNotes();
     renderClipboardHistory();
     document.getElementById('fuzzy-search').checked = fuzzySearch;
+  });
+}
+
+function populateShortcutGroups() {
+  const groupSelect = document.getElementById('shortcut-group');
+  groupSelect.innerHTML = '';
+  
+  Object.keys(shortcuts).forEach(group => {
+    const option = document.createElement('option');
+    option.value = group;
+    option.textContent = group;
+    groupSelect.appendChild(option);
   });
 }
 
@@ -58,6 +71,9 @@ function setupEventListeners() {
 
   // Add event listener for clipboard history clear
   document.getElementById('clear-clipboard-btn').addEventListener('click', clearClipboardHistory);
+
+  // Add group button
+  document.getElementById('add-group-btn').addEventListener('click', addGroup);
 }
 
 function setupResizable() {
@@ -80,11 +96,21 @@ function setupResizable() {
 }
 
 function addShortcut() {
-  const key = document.getElementById('shortcut-key').value.trim();
+  const group = document.getElementById('shortcut-group').value;
+  let key = document.getElementById('shortcut-key').value.trim();
   const text = document.getElementById('shortcut-text').value.trim();
 
-  if (key && text) {
-    shortcuts[key] = text;
+  if (group && key && text) {
+    // Add // if not present at the beginning
+    if (!key.startsWith('//')) {
+      key = '//' + key;
+    }
+
+    if (!shortcuts[group]) {
+      shortcuts[group] = {};
+    }
+    shortcuts[group][key] = text;
+    
     chrome.storage.sync.set({ shortcuts }, () => {
       renderShortcuts();
       document.getElementById('shortcut-key').value = '';
@@ -97,37 +123,45 @@ function renderShortcuts() {
   const list = document.getElementById('shortcuts-list');
   list.innerHTML = '';
 
-  Object.entries(shortcuts).forEach(([key, value]) => {
-    const item = document.createElement('div');
-    item.className = 'shortcut-item';
-    item.innerHTML = `
-      <div class="item-details">
-        <strong>${key}:</strong> ${value}
-      </div>
-      <div class="action-btns">
-        <button class="edit-btn">Edit</button>
-        <button class="delete-btn">Delete</button>
-      </div>
-    `;
-    
-    item.querySelector('.edit-btn').addEventListener('click', () => editShortcut(key));
-    item.querySelector('.delete-btn').addEventListener('click', () => deleteShortcut(key));
-    
-    list.appendChild(item);
+  Object.entries(shortcuts).forEach(([group, groupShortcuts]) => {
+    const groupElement = document.createElement('div');
+    groupElement.className = 'shortcut-group';
+    groupElement.innerHTML = `<h3>${group}</h3>`;
+
+    Object.entries(groupShortcuts).forEach(([key, value]) => {
+      const item = document.createElement('div');
+      item.className = 'shortcut-item';
+      item.innerHTML = `
+        <div class="item-details">
+          <strong>${key}:</strong> ${value}
+        </div>
+        <div class="action-btns">
+          <button class="edit-btn">Edit</button>
+          <button class="delete-btn">Delete</button>
+        </div>
+      `;
+      
+      item.querySelector('.edit-btn').addEventListener('click', () => editShortcut(group, key));
+      item.querySelector('.delete-btn').addEventListener('click', () => deleteShortcut(group, key));
+      
+      groupElement.appendChild(item);
+    });
+
+    list.appendChild(groupElement);
   });
 }
 
-function editShortcut(key) {
-  const newText = prompt('Enter the new text for the shortcut:', shortcuts[key]);
+function editShortcut(group, key) {
+  const newText = prompt('Enter the new text for the shortcut:', shortcuts[group][key]);
   if (newText !== null) {
-    shortcuts[key] = newText;
+    shortcuts[group][key] = newText;
     chrome.storage.sync.set({ shortcuts }, renderShortcuts);
   }
 }
 
-function deleteShortcut(key) {
-  if (confirm(`Are you sure you want to delete the shortcut "${key}"?`)) {
-    delete shortcuts[key];
+function deleteShortcut(group, key) {
+  if (confirm(`Are you sure you want to delete the shortcut "${key}" under "${group}"?`)) {
+    delete shortcuts[group][key];
     chrome.storage.sync.set({ shortcuts }, renderShortcuts);
   }
 }
@@ -137,20 +171,34 @@ function filterShortcuts() {
   const list = document.getElementById('shortcuts-list');
   list.innerHTML = '';
 
-  Object.entries(shortcuts).forEach(([key, value]) => {
-    if (fuzzySearch) {
-      if (fuzzysearch(query, key.toLowerCase()) || fuzzysearch(query, value.toLowerCase())) {
-        renderShortcutItem(key, value, list);
+  Object.entries(shortcuts).forEach(([group, groupShortcuts]) => {
+    const groupElement = document.createElement('div');
+    groupElement.className = 'shortcut-group';
+    groupElement.innerHTML = `<h3>${group}</h3>`;
+
+    let hasMatchingShortcuts = false;
+
+    Object.entries(groupShortcuts).forEach(([key, value]) => {
+      if (fuzzySearch) {
+        if (fuzzysearch(query, key.toLowerCase()) || fuzzysearch(query, value.toLowerCase())) {
+          renderShortcutItem(group, key, value, groupElement);
+          hasMatchingShortcuts = true;
+        }
+      } else {
+        if (key.toLowerCase().includes(query) || value.toLowerCase().includes(query)) {
+          renderShortcutItem(group, key, value, groupElement);
+          hasMatchingShortcuts = true;
+        }
       }
-    } else {
-      if (key.toLowerCase().includes(query) || value.toLowerCase().includes(query)) {
-        renderShortcutItem(key, value, list);
-      }
+    });
+
+    if (hasMatchingShortcuts) {
+      list.appendChild(groupElement);
     }
   });
 }
 
-function renderShortcutItem(key, value, list) {
+function renderShortcutItem(group, key, value, list) {
   const item = document.createElement('div');
   item.className = 'shortcut-item';
   item.innerHTML = `
@@ -159,8 +207,8 @@ function renderShortcutItem(key, value, list) {
     <button class="delete-btn">Delete</button>
   `;
   
-  item.querySelector('.edit-btn').addEventListener('click', () => editShortcut(key));
-  item.querySelector('.delete-btn').addEventListener('click', () => deleteShortcut(key));
+  item.querySelector('.edit-btn').addEventListener('click', () => editShortcut(group, key));
+  item.querySelector('.delete-btn').addEventListener('click', () => deleteShortcut(group, key));
   
   list.appendChild(item);
 }
@@ -397,7 +445,8 @@ function importShortcuts() {
       lines.forEach(line => {
         const [key, value] = line.split(',');
         if (key && value) {
-          shortcuts[key.trim()] = value.trim();
+          const formattedKey = key.trim().startsWith('//') ? key.trim() : '//' + key.trim();
+          shortcuts[formattedKey] = value.trim();
         }
       });
       chrome.storage.sync.set({ shortcuts }, () => {
@@ -433,5 +482,43 @@ function clearClipboardHistory() {
       alert('Clipboard history cleared!');
     });
   }
+}
+
+// Add new function to handle adding groups
+function addGroup() {
+  const groupName = prompt('Enter the name for the new group:');
+  if (groupName && groupName.trim()) {
+    shortcuts[groupName.trim()] = {};
+    chrome.storage.sync.set({ shortcuts }, () => {
+      populateShortcutGroups();
+      renderShortcuts();
+    });
+  }
+}
+
+function setupSearchableSelect(select) {
+  const wrapper = document.createElement('div');
+  wrapper.className = 'searchable-select';
+  
+  const search = document.createElement('input');
+  search.type = 'text';
+  search.placeholder = 'Search...';
+  
+  search.addEventListener('input', () => {
+    const query = search.value.toLowerCase();
+    Array.from(select.options).forEach(option => {
+      option.style.display = option.text.toLowerCase().includes(query) ? '' : 'none';
+    });
+  });
+  
+  select.parentNode.insertBefore(wrapper, select);
+  wrapper.appendChild(search);
+  wrapper.appendChild(select);
+}
+
+// Use it in your setup
+function setupNoteSearchDropdowns() {
+  setupSearchableSelect(document.getElementById('topic-select'));
+  setupSearchableSelect(document.getElementById('subtopic-select'));
 }
 

@@ -292,3 +292,35 @@ body {
   border-radius: 4px;
   cursor: pointer;
 }
+
+.shortcut-group {
+  margin-bottom: 1.5rem;
+  border: 1px solid var(--gray-200);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.shortcut-group h3 {
+  margin: 0;
+  padding: 0.75rem 1rem;
+  background-color: var(--gray-50);
+  border-bottom: 1px solid var(--gray-200);
+  font-size: 1rem;
+  color: var(--gray-700);
+}
+
+.shortcuts-header {
+  display: flex;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+/* Make the popup resizable */
+.app-container {
+  height: 100vh;
+  max-height: 900px;
+  min-height: 500px;
+  width: 100vw;
+  max-width: 800px;
+  min-width: 400px;
+}

@@ -2,6 +2,7 @@ let shortcuts = {};
 let notes = {};
 let clipboardHistory = [];
 let fuzzySearch = false;
+let activeMenu = null;
 
 // Load data from storage
 chrome.storage.sync.get(
@@ -162,227 +163,676 @@ function getCursorPosition(element) {
 
 function handleInput(e) {
   const target = e.target;
+  const value = target.value || target.textContent;
   const isContentEditable = target.isContentEditable;
-  const value = isContentEditable ? target.textContent : target.value;
 
-  console.log("Input event triggered on:", target, "Value:", value);
+  debug('Input event:', { value, isContentEditable });
 
-  if (value.endsWith("//")) {
-    removeExistingShortcutMenu();
-    showShortcutMenu(target, isContentEditable);
-  } else if (value.endsWith("//notes")) {
-    removeExistingShortcutMenu();
+  // Check for shortcut pattern
+  const match = value.match(/\/\/(\w*)$/);
+  
+  if (!match) {
+    closeActiveMenu();
+    return;
+  }
+
+  const searchTerm = match[1].toLowerCase();
+  debug('Search term:', searchTerm);
+
+  // Special commands
+  if (value.endsWith("//notes")) {
+    closeActiveMenu();
     showNotesPopup(target, isContentEditable);
-  } else if (value.endsWith("//clipboard")) {
-    removeExistingShortcutMenu();
+        return;
+      }
+
+  if (value.endsWith("//clipboard")) {
+    closeActiveMenu();
     showClipboardHistory(target, isContentEditable);
+    return;
   }
 
-  // Auto-expand shortcuts
-  Object.entries(shortcuts).forEach(([key, expansion]) => {
-    const regex = new RegExp(`\\b${key}\\b`, "g");
-    if (regex.test(value)) {
-      const newValue = value.replace(regex, expansion);
-      if (isContentEditable) {
-        target.textContent = newValue;
-      } else {
-        target.value = newValue;
-      }
-      const newPosition = newValue.length;
-      if (isContentEditable) {
-        const range = document.createRange();
-        const sel = window.getSelection();
-        range.setStart(target.childNodes[0], newPosition);
-        range.collapse(true);
-        sel.removeAllRanges();
-        sel.addRange(range);
-      } else {
-        target.setSelectionRange(newPosition, newPosition);
-      }
-    }
-  });
+  updateOrCreateMenu(target, isContentEditable, searchTerm);
 }
-function showShortcutMenu(target, isContentEditable, filterVal = "") {
-  removeExistingShortcutMenu();
 
-  const menu = document.createElement("div");
-  menu.className = "menu";
-  const shortcutsMenu = document.createElement("div");
-  shortcutsMenu.className = "shortcut-menu";
-  const tooltip = document.createElement("div");
-  tooltip.className = "shortcut-tooltip";
+function updateOrCreateMenu(target, isContentEditable, searchTerm) {
+  if (!activeMenu) {
+    activeMenu = createMenu(target, isContentEditable);
+  }
+  
+  updateMenuContent(searchTerm);
+}
 
-  function renderShortcuts(filter = "") {
-    menu.innerHTML = "";
-    Object.entries(shortcuts).forEach(([key, value]) => {
-      if (
-        key.toLowerCase().includes(filter.toLowerCase()) ||
-        value.toLowerCase().includes(filter.toLowerCase())
-      ) {
-        // Create shortcut item
-        const item = document.createElement("div");
-        item.className = "shortcut-menu-item";
-        item.textContent = key;
+function createMenu(target, isContentEditable) {
+  const menu = document.createElement('div');
+  menu.className = 'menu';
+  
+  // Store the original trigger element
+  menu.triggerElement = target;
+  
+  const content = document.createElement('div');
+  content.className = 'menu-content';
+  menu.appendChild(content);
 
-        // Show tooltip
-        item.addEventListener("mouseenter", () => {
-          tooltip.textContent = value;
-          tooltip.classList.add("visible");
-        });
+  // Position menu
+  const rect = target.getBoundingClientRect();
+  menu.style.position = 'fixed';
+  menu.style.left = `${rect.left}px`;
+  menu.style.top = `${rect.bottom + window.scrollY}px`;
 
-        // Hide tooltip
-        item.addEventListener("mouseleave", () => {
-          tooltip.textContent = "";
-          tooltip.classList.remove("visible");
-        });
+  // Event listeners
+  document.addEventListener('click', handleGlobalClick);
+  document.addEventListener('keydown', handleGlobalKeydown);
+  
+  menu.cleanup = () => {
+    document.removeEventListener('click', handleGlobalClick);
+    document.removeEventListener('keydown', handleGlobalKeydown);
+  };
 
-        // Replace shortcut and remove the menu
-        item.addEventListener("click", () => {
-          replaceShortcut(target, key, isContentEditable);
-          menu.remove();
-          // tooltip.remove();
-        });
-
-        shortcutsMenu.appendChild(item);
-      }
-    });
-    menu.appendChild(shortcutsMenu);
+  function handleGlobalClick(e) {
+    if (!menu.contains(e.target) && e.target !== target) {
+      closeActiveMenu();
+    }
   }
 
-  renderShortcuts(filterVal);
-
-  // Position menu at cursor
-  const cursorPos = getCursorPosition(target);
-  if (cursorPos) {
-    const scrollY = window.scrollY;
-    menu.style.position = "absolute";
-    menu.style.left = `${cursorPos.left}px`;
-    menu.style.top = `${cursorPos.top + cursorPos.height + scrollY}px`;
+  function handleGlobalKeydown(e) {
+    if (e.key === 'Escape') {
+      closeActiveMenu();
+    }
   }
 
   document.body.appendChild(menu);
-  menu.appendChild(tooltip);
-
-  // Handle click outside
-  document.addEventListener(
-    "click",
-    (e) => {
-      if (!menu.contains(e.target) && e.target !== target) {
-        menu.remove();
-        tooltip.remove();
-      }
-    },
-    { once: true }
-  );
+  return menu;
 }
 
-function replaceShortcut(target, key, isContentEditable) {
-  const replacementText = shortcuts[key] + " ";
+function updateMenuContent(searchTerm) {
+  if (!activeMenu) return;
 
+  const content = activeMenu.querySelector('.menu-content');
+  content.innerHTML = '';
+
+  if (!searchTerm) {
+    renderGroups(content);
+    return;
+  }
+
+  const results = searchShortcuts(searchTerm);
+  if (results.shortcuts.length === 0 && results.groups.length === 0) {
+    closeActiveMenu();
+    return;
+  }
+
+  renderSearchResults(content, results);
+}
+
+function searchShortcuts(term) {
+  const results = {
+    groups: [],
+    shortcuts: []
+  };
+
+  // Search groups
+  Object.keys(shortcuts).forEach(group => {
+    if (group.toLowerCase().includes(term)) {
+      results.groups.push(group);
+    }
+    
+    // Search shortcuts within group
+    Object.entries(shortcuts[group]).forEach(([key, value]) => {
+      if (key.toLowerCase().includes(term)) {
+        results.shortcuts.push({ group, key, value });
+      }
+    });
+  });
+
+  return results;
+}
+
+function renderGroups(container) {
+  Object.keys(shortcuts).forEach(group => {
+    const groupItem = document.createElement('div');
+    groupItem.className = 'group-item';
+    groupItem.textContent = group;
+    groupItem.addEventListener('click', (e) => {
+      e.stopPropagation();
+      showGroupShortcuts(container, group, e);
+    });
+    container.appendChild(groupItem);
+  });
+}
+
+function showGroupShortcuts(container, group, e) {
+  // Prevent event propagation to avoid menu closing
+  if (e) e.stopPropagation();
+  
+  container.innerHTML = '';
+  
+  // Add back button
+  const backBtn = document.createElement('div');
+  backBtn.className = 'back-button';
+  backBtn.innerHTML = '← Back to Groups';
+  backBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    updateMenuContent();
+  });
+  container.appendChild(backBtn);
+
+  // Add shortcuts
+  Object.entries(shortcuts[group]).forEach(([key, value]) => {
+    const item = createShortcutItem(key, value);
+    container.appendChild(item);
+  });
+}
+
+function renderSearchResults(container, results) {
+  // Render matching groups
+  if (results.groups.length > 0) {
+    const groupsSection = document.createElement('div');
+    groupsSection.className = 'menu-section';
+    groupsSection.innerHTML = '<div class="menu-section-title">Groups</div>';
+    
+    results.groups.forEach(group => {
+      const groupItem = document.createElement('div');
+      groupItem.className = 'group-item';
+      groupItem.textContent = group;
+      groupItem.addEventListener('click', () => showGroupShortcuts(container, group));
+      groupsSection.appendChild(groupItem);
+    });
+    
+    container.appendChild(groupsSection);
+  }
+
+  // Render matching shortcuts
+  if (results.shortcuts.length > 0) {
+    const shortcutsSection = document.createElement('div');
+    shortcutsSection.className = 'menu-section';
+    shortcutsSection.innerHTML = '<div class="menu-section-title">Shortcuts</div>';
+    
+    results.shortcuts.forEach(({ key, value }) => {
+      const item = createShortcutItem(key, value);
+      shortcutsSection.appendChild(item);
+    });
+    
+    container.appendChild(shortcutsSection);
+  }
+}
+
+function createShortcutItem(key, value) {
+  const item = document.createElement('div');
+  item.className = 'shortcut-menu-item';
+        item.textContent = key;
+
+  const tooltip = document.createElement('div');
+  tooltip.className = 'menu-tooltip';
+          tooltip.textContent = value;
+  document.body.appendChild(tooltip);
+  
+  item.addEventListener('mouseenter', (e) => {
+    e.stopPropagation();
+    tooltip.style.display = 'block';
+    positionTooltip(item, tooltip);
+  });
+  
+  item.addEventListener('mouseleave', () => {
+    tooltip.style.display = 'none';
+  });
+  
+  item.addEventListener('click', (e) => {
+    e.stopPropagation();
+    // Get the original target that triggered the menu
+    const target = activeMenu.triggerElement || document.activeElement;
+    
+    debug('Click target:', {
+      target,
+      tagName: target?.tagName,
+      isContentEditable: target?.isContentEditable
+    });
+    
+    if (target) {
+      const isContentEditable = target.isContentEditable || false;
+      insertText(target, value, isContentEditable);
+    }
+    
+    closeActiveMenu();
+    tooltip.remove();
+  });
+  
+  return item;
+}
+
+function closeActiveMenu() {
+  if (activeMenu) {
+    debug('Closing active menu');
+    activeMenu.cleanup?.();
+    activeMenu.remove();
+    
+    // Remove any orphaned tooltips
+    document.querySelectorAll('.menu-tooltip').forEach(tooltip => tooltip.remove());
+    
+    activeMenu = null;
+  }
+}
+
+function positionTooltip(item, tooltip) {
+  const itemRect = item.getBoundingClientRect();
+  const menuRect = activeMenu.getBoundingClientRect();
+  
+  // Position tooltip to the right of the menu
+  let left = menuRect.right + 8;
+  const top = itemRect.top;
+
+  // Check if tooltip would go off screen to the right
+  tooltip.style.display = 'block'; // Temporarily show to get dimensions
+  const tooltipRect = tooltip.getBoundingClientRect();
+  if (left + tooltipRect.width > window.innerWidth) {
+    // Position to the left of the menu instead
+    left = menuRect.left - tooltipRect.width - 8;
+  }
+  
+  tooltip.style.left = `${left}px`;
+  tooltip.style.top = `${top}px`;
+}
+
+function insertText(target, text, isContentEditable) {
+  debug('Inserting text:', { target, text, isContentEditable });
+  
+  try {
+    // First check if target is valid
+    if (!target) {
+      debug('No target element provided');
+      return;
+    }
+
+    // Handle contentEditable elements
   if (isContentEditable) {
     const selection = window.getSelection();
+      if (!selection || !selection.rangeCount) {
+        debug('No valid selection in contentEditable');
+        return;
+      }
+      
     const range = selection.getRangeAt(0);
-    const content = target.textContent;
+      const content = target.textContent || '';
     const shortcutIndex = content.lastIndexOf("//");
 
     if (shortcutIndex !== -1) {
       const beforeShortcut = content.substring(0, shortcutIndex);
-      const afterShortcut = content
-        .substring(shortcutIndex)
-        .replace(/\/\/\w*/, "");
+        const afterShortcut = content.substring(range.endOffset);
+        target.textContent = beforeShortcut + text + afterShortcut;
 
-      target.textContent = beforeShortcut + replacementText + afterShortcut;
-
-      // Set cursor position after the replacement
+        // Set cursor position after inserted text
       const newRange = document.createRange();
       const textNode = target.firstChild || target;
-      const newPosition = shortcutIndex + replacementText.length;
+        const newPosition = beforeShortcut.length + text.length;
       newRange.setStart(textNode, newPosition);
       newRange.setEnd(textNode, newPosition);
       selection.removeAllRanges();
       selection.addRange(newRange);
     }
-  } else {
+    } 
+    // Handle input and textarea elements
+    else if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') {
+      if (typeof target.value !== 'string') {
+        debug('Target is not a valid input element');
+        return;
+      }
+      
     const start = target.selectionStart;
     const value = target.value;
     const shortcutIndex = value.lastIndexOf("//", start);
 
     if (shortcutIndex !== -1) {
-      const beforeShortcut = value.substring(0, shortcutIndex);
-      const afterShortcut = value.substring(start);
-      const newValue = beforeShortcut + replacementText + afterShortcut;
-
+        const newValue = value.substring(0, shortcutIndex) + text + value.substring(start);
       target.value = newValue;
-      const newPosition = shortcutIndex + replacementText.length;
-      target.setSelectionRange(newPosition, newPosition);
+        target.selectionStart = target.selectionEnd = shortcutIndex + text.length;
+      }
+    }
+    // Handle other elements
+    else {
+      debug('Target is not a supported element type:', target.tagName);
+      return;
+    }
+    
+    debug('Text insertion complete');
+  } catch (error) {
+    debug('Error inserting text:', error);
+    console.error(error);
+  }
+}
+
+function createSearchableSelect(options, placeholder = 'Search...', defaultValue = '') {
+  const wrapper = document.createElement('div');
+  wrapper.className = 'searchable-select';
+
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.placeholder = defaultValue || placeholder;
+  input.className = 'searchable-select-input';
+  
+  // Add a hidden span to store the actual value
+  const valueHolder = document.createElement('span');
+  valueHolder.style.display = 'none';
+  valueHolder.textContent = defaultValue;
+  wrapper.appendChild(valueHolder);
+
+  const dropdown = document.createElement('div');
+  dropdown.className = 'searchable-select-dropdown';
+
+  function renderOptions(searchTerm = '') {
+    dropdown.innerHTML = '';
+    const filteredOptions = searchTerm 
+      ? options.filter(option => 
+          option.toLowerCase().includes(searchTerm.toLowerCase())
+        )
+      : options;
+
+    filteredOptions.forEach(option => {
+      const item = document.createElement('div');
+      item.className = 'searchable-select-item';
+      item.textContent = option;
+      if (option === valueHolder.textContent) {
+        item.classList.add('selected');
+      }
+      item.addEventListener('click', () => {
+        valueHolder.textContent = option;
+        input.value = ''; // Clear search text
+        input.placeholder = option; // Show selected value as placeholder
+        dropdown.style.display = 'none';
+        wrapper.dispatchEvent(new CustomEvent('change', { detail: option }));
+      });
+      dropdown.appendChild(item);
+    });
+
+    if (filteredOptions.length === 0) {
+      const noResults = document.createElement('div');
+      noResults.className = 'searchable-select-no-results';
+      noResults.textContent = 'No matches found';
+      dropdown.appendChild(noResults);
     }
   }
 
-  // Ensure the target maintains focus
-  target.focus();
+  input.addEventListener('focus', () => {
+    input.value = ''; // Clear input when focused
+    renderOptions(''); // Show all options
+    dropdown.style.display = 'block';
+  });
+
+  input.addEventListener('input', (e) => {
+    renderOptions(e.target.value);
+    dropdown.style.display = 'block';
+  });
+
+  input.addEventListener('blur', () => {
+    setTimeout(() => {
+      input.value = ''; // Clear search text
+      input.placeholder = valueHolder.textContent || placeholder; // Restore placeholder
+      dropdown.style.display = 'none';
+    }, 200);
+  });
+
+  wrapper.appendChild(input);
+  wrapper.appendChild(dropdown);
+  
+  return wrapper;
 }
 
 function showNotesPopup(target, isContentEditable) {
-  const popup = document.createElement("div");
-  popup.className = "notes-popup";
+  const popup = document.createElement('div');
+  popup.className = 'notes-popup';
+  
+  popup.innerHTML = `
+    <div class="notes-popup-header">
+      <div class="notes-popup-title">
+        <span class="ax">AX</span><span class="celerate">elerate</span> <span>Templates</span>
+      </div>
+      <div class="notes-popup-controls">
+        <button type="button" class="minimize-btn" title="Minimize">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M8 3v3a2 2 0 0 1-2 2H3m18 0h-3a2 2 0 0 1-2-2V3m0 18v-3a2 2 0 0 1 2-2h3M3 16h3a2 2 0 0 1 2 2v3"/>
+          </svg>
+        </button>
+        <button type="button" class="close-btn" title="Close">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M18 6L6 18M6 6l12 12"/>
+          </svg>
+        </button>
+      </div>
+    </div>
 
-  const header = document.createElement("div");
-  header.className = "notes-popup-header";
-  header.innerHTML = "<h2>Select Note</h2>";
-  popup.appendChild(header);
+    <div class="notes-popup-content">
+      <div class="notes-main-section">
+        <div class="notes-selectors">
+          <div class="notes-popup-field topic-field">
+            <label>Topic</label>
+            <div class="select-container"></div>
+          </div>
+          <div class="notes-popup-field subtopic-field">
+            <label>Subtopic</label>
+            <div class="select-container"></div>
+          </div>
+        </div>
+        <div class="template-preview"></div>
+      </div>
 
-  const content = document.createElement("div");
-  content.className = "notes-popup-content";
+      <div class="clipboard-section">
+        <h3>Clipboard history</h3>
+        <div class="clipboard-items"></div>
+      </div>
+    </div>
 
-  const topicSelect = document.createElement("select");
-  const subtopicSelect = document.createElement("select");
-  const presetText = document.createElement("div");
-  const importBtn = document.createElement("button");
-  importBtn.textContent = "Import";
-  importBtn.className = "btn-primary";
+    <div class="notes-popup-actions">
+      <button type="button" class="cancel">Cancel</button>
+      <button type="button" class="import">Import Note</button>
+    </div>
+  `;
 
-  content.appendChild(createField("Topic", topicSelect));
-  content.appendChild(createField("Subtopic", subtopicSelect));
-  content.appendChild(presetText);
+  // Get container references
+  const topicContainer = popup.querySelector('.topic-field .select-container');
+  const subtopicContainer = popup.querySelector('.subtopic-field .select-container');
+  
+  // Get topics from notes object
+  const topics = Object.keys(notes);
+  
+  // Create searchable selects
+  const topicSelect = createSearchableSelect(topics, 'Search topics...', topics[0]);
+  const subtopicSelect = createSearchableSelect([], 'Search subtopics...'); // Initially empty
 
-  const actions = document.createElement("div");
-  actions.className = "notes-popup-actions";
-  actions.appendChild(importBtn);
+  // Add selects to containers
+  topicContainer.appendChild(topicSelect);
+  subtopicContainer.appendChild(subtopicSelect);
 
-  popup.appendChild(content);
-  popup.appendChild(actions);
+  // Set default selection for topic (first item)
+  if (topics.length > 0) {
+    const defaultTopic = topics[0];
+    const topicInput = topicSelect.querySelector('input');
+    topicInput.value = defaultTopic;
+    topicInput.setAttribute('data-value', defaultTopic);
 
-  Object.keys(notes).forEach((topic) => {
-    const option = document.createElement("option");
-    option.value = topic;
-    option.textContent = topic;
-    topicSelect.appendChild(option);
+    // Handle topic selection changes
+    topicInput.addEventListener('change', (e) => {
+      const selectedTopic = e.detail;
+      updateSubtopicSelect(selectedTopic);
+    });
+
+    // Initial subtopic setup
+    updateSubtopicSelect(defaultTopic);
+  }
+
+  function updateSubtopicSelect(topic) {
+    const subtopics = Object.keys(notes[topic] || {});
+    const defaultSubtopic = subtopics[0] || '';
+    const newSubtopicSelect = createSearchableSelect(subtopics, 'Search subtopics...', defaultSubtopic);
+    subtopicContainer.innerHTML = '';
+    subtopicContainer.appendChild(newSubtopicSelect);
+
+    // Handle subtopic selection changes
+    newSubtopicSelect.addEventListener('change', (e) => {
+      const selectedSubtopic = e.detail;
+      if (topic && selectedSubtopic && notes[topic][selectedSubtopic]) {
+        updateTemplatePreview(notes[topic][selectedSubtopic], popup);
+      }
+    });
+
+    // Show initial template preview
+    if (defaultSubtopic && notes[topic][defaultSubtopic]) {
+      updateTemplatePreview(notes[topic][defaultSubtopic], popup);
+    }
+  }
+
+  // Add clipboard functionality with auto-refresh
+    const clipboardItems = popup.querySelector('.clipboard-items');
+  
+  function updateClipboardHistory() {
+      clipboardItems.innerHTML = clipboardHistory
+        .map(item => `
+          <div class="clipboard-item">
+            ${item.length > 50 ? item.substring(0, 50) + '...' : item}
+          </div>
+        `)
+        .join('');
+
+      // Add click handlers for clipboard items
+      clipboardItems.querySelectorAll('.clipboard-item').forEach((item, index) => {
+        item.addEventListener('click', () => {
+          const textToCopy = clipboardHistory[index];
+          navigator.clipboard.writeText(textToCopy).then(() => {
+            item.style.backgroundColor = '#e9ecef';
+            setTimeout(() => {
+            item.style.backgroundColor = '';
+            }, 200);
+          });
+        });
+      });
+    }
+
+  // Initial update
+  updateClipboardHistory();
+
+  // Set up clipboard history refresh interval
+  const refreshInterval = setInterval(updateClipboardHistory, 1000);
+
+  // Clean up on close
+  const cleanup = () => {
+    clearInterval(refreshInterval);
+    popup.remove();
+  };
+
+  // Handle close button
+  popup.querySelector('.close-btn').addEventListener('click', cleanup);
+  popup.querySelector('.cancel').addEventListener('click', cleanup);
+
+  // Update copy event listener
+  document.addEventListener('copy', () => {
+    setTimeout(updateClipboardHistory, 100); // Small delay to ensure clipboard is updated
   });
 
-  topicSelect.addEventListener("change", () =>
-    updateSubtopics(topicSelect.value, subtopicSelect, presetText)
-  );
-  subtopicSelect.addEventListener("change", () =>
-    updatePresetText(topicSelect.value, subtopicSelect.value, presetText)
-  );
-  importBtn.addEventListener("click", () =>
-    importNote(target, topicSelect.value, subtopicSelect.value, popup)
-  );
+  // Handle minimize/maximize
+  const minimizeBtn = popup.querySelector('.minimize-btn');
+  let isMinimized = false;
 
+  function minimize() {
+    if (!isMinimized) {
+      popup.classList.add('minimized');
+      isMinimized = true;
+    }
+  }
+
+  function maximize() {
+    if (isMinimized) {
+      popup.classList.remove('minimized');
+      isMinimized = false;
+      popup.style.top = '50%';
+      popup.style.left = '50%';
+      popup.style.transform = 'translate(-50%, -50%)';
+    }
+  }
+
+  minimizeBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (isMinimized) {
+      maximize();
+        } else {
+      minimize();
+    }
+  });
+
+  // Handle click on minimized popup
+  popup.addEventListener('click', (e) => {
+    if (isMinimized && !e.target.closest('.close-btn')) {
+      maximize();
+    }
+  });
+
+  // Fix import functionality
+  popup.querySelector('.import').addEventListener('click', () => {
+    const selectedTopic = topicSelect.querySelector('input').placeholder; // Use placeholder as current value
+    const selectedSubtopic = subtopicContainer.querySelector('input').placeholder; // Use placeholder as current value
+    
+    if (selectedTopic && selectedSubtopic && notes[selectedTopic]?.[selectedSubtopic]) {
+      let templateText = notes[selectedTopic][selectedSubtopic].text;
+      const inputs = popup.querySelectorAll('.template-preview input');
+      
+      inputs.forEach(input => {
+        templateText = templateText.replace(
+          `{${input.placeholder}}`,
+          input.value || input.placeholder
+        );
+      });
+
+      insertText(target, templateText, isContentEditable);
+    popup.remove();
+    }
+  });
+
+  // Remove any duplicate event listeners
+  popup.querySelector('.minimize-btn').removeEventListener('click', () => {
+    popup.classList.toggle('minimized');
+  });
+
+  // Add popup to document
   document.body.appendChild(popup);
 
-  updateSubtopics(topicSelect.value, subtopicSelect, presetText);
+  // Position popup in center
+  popup.style.position = 'fixed';
+  popup.style.top = '50%';
+  popup.style.left = '50%';
+  popup.style.transform = 'translate(-50%, -50%)';
 
-  // Add click outside handling
-  document.addEventListener(
-    "click",
-    (e) => {
-      if (!popup.contains(e.target) && e.target !== target) {
-        popup.remove();
-      }
-    },
-    { once: true }
-  );
+  return popup;
+}
+
+function renderClipboardItems(container) {
+  container.innerHTML = '';
+  clipboardHistory.forEach(item => {
+    const element = document.createElement('div');
+    element.className = 'clipboard-item';
+    element.textContent = item.length > 50 ? item.substring(0, 50) + '...' : item;
+    
+    element.addEventListener('click', () => {
+      navigator.clipboard.writeText(item).then(() => {
+        showCopyNotification();
+      });
+    });
+    
+    container.appendChild(element);
+  });
+}
+
+function showCopyNotification() {
+  const notification = document.createElement('div');
+  notification.className = 'copy-notification';
+  notification.textContent = 'Copied to clipboard';
+  
+  document.body.appendChild(notification);
+  
+  // Trigger animation
+  setTimeout(() => notification.classList.add('show'), 10);
+  
+  // Remove notification after animation
+  setTimeout(() => {
+    notification.classList.remove('show');
+    setTimeout(() => notification.remove(), 300);
+  }, 2000);
 }
 
 function createField(label, element) {
@@ -410,14 +860,18 @@ function updateSubtopics(topic, subtopicSelect, presetText) {
 
 function updatePresetText(topic, subtopic, presetText) {
   const note = notes[topic][subtopic];
-  presetText.innerHTML = "";
-
+  presetText.innerHTML = '';
+  
   note.text.split(/{([^}]+)}/).forEach((part, index) => {
     if (index % 2 === 0) {
-      presetText.appendChild(document.createTextNode(part));
+      const textNode = document.createElement('span');
+      textNode.textContent = part;
+      presetText.appendChild(textNode);
     } else {
-      const input = document.createElement("input");
+      const input = document.createElement('input');
       input.placeholder = part;
+      input.style.width = part.length + 2 + 'ch';  // Dynamic width based on placeholder
+      input.style.backgroundColor = '#f0fdfa';     // Light teal background
       presetText.appendChild(input);
     }
   });
@@ -442,91 +896,80 @@ function importNote(target, topic, subtopic, popup) {
 }
 
 function showClipboardHistory(target, isContentEditable) {
-  console.log("showClipboardHistory called");
-  console.log("clipboardHistory:", clipboardHistory);
+  removeExistingShortcutMenu();
+  
+  const menu = document.createElement('div');
+  menu.className = 'clipboard-menu';
+  
+  // Store the original trigger element
+  menu.triggerElement = target;
 
-  const menu = document.createElement("div");
-  menu.className = "shortcut-menu";
-  console.log("Created menu element");
-
-  clipboardHistory.forEach((item) => {
-    const truncatedItem = item.length > 30 ? item.substring(0, 30) + "..." : item;
-    const element = document.createElement("div");
-    element.className = "shortcut-menu-item";
-    element.textContent = truncatedItem;
-    console.log("Created menu item:", truncatedItem);
-
-    element.addEventListener("click", () => {
-      console.log("Menu item clicked:", item);
-      let newValue;
-
-      if (isContentEditable) {
-        // For contenteditable elements
-        const selection = window.getSelection();
-        const range = selection.getRangeAt(0);
-        const startOffset = range.startOffset;
-        const endOffset = range.endOffset;
-        const content = target.textContent;
-        const beforeCursor = content.substring(0, startOffset).replace(/\/\/clipboard\w*$/, '');
-        const afterCursor = content.substring(endOffset);
-
-        target.textContent = beforeCursor + item + afterCursor;
-        newValue = beforeCursor + item + afterCursor;
-
-        // Set cursor position after the inserted text
-        const newRange = document.createRange();
-        const textNode = target.firstChild || target;
-        const newPosition = beforeCursor.length + item.length;
-        newRange.setStart(textNode, newPosition);
-        newRange.setEnd(textNode, newPosition);
-        selection.removeAllRanges();
-        selection.addRange(newRange);
+  if (clipboardHistory.length === 0) {
+    const emptyMessage = document.createElement('div');
+    emptyMessage.className = 'clipboard-empty';
+    emptyMessage.textContent = 'No clipboard history';
+    menu.appendChild(emptyMessage);
       } else {
-        // For regular input elements
-        const value = target.value;
-        newValue = value.replace(/\/\/clipboard\w*$/, item + " ");
-        target.value = newValue;
-        target.selectionStart = target.selectionEnd = newValue.length;
-      }
-
-      // Focus the target element and set the cursor position
-      target.focus();
-
-      // Simulate space key press
-      const event = new KeyboardEvent('keydown', {
-        bubbles: true,
-        cancelable: true,
-        key: ' ',
-        code: 'Space'
+    clipboardHistory.forEach((text) => {
+      const item = document.createElement('div');
+      item.className = 'clipboard-item';
+      item.textContent = text.length > 50 ? text.substring(0, 50) + '...' : text;
+      
+      item.addEventListener('click', (e) => {
+        e.stopPropagation();
+        insertText(target, text, isContentEditable);
+        menu.remove();
       });
-      target.dispatchEvent(event);
-
-      menu.remove();
+      
+      menu.appendChild(item);
     });
-    menu.appendChild(element);
-  });
+  }
 
+  // Position menu
   const rect = target.getBoundingClientRect();
-  menu.style.position = "absolute";
+  menu.style.position = 'fixed';
   menu.style.left = `${rect.left}px`;
-  menu.style.top = `${rect.bottom}px`;
-  console.log("Positioned menu at:", menu.style.left, menu.style.top);
+  menu.style.top = `${rect.bottom + window.scrollY}px`;
 
-  document.body.appendChild(menu);
-  console.log("Appended menu to the DOM");
-
-  document.addEventListener(
-    "click",
-    (e) => {
+  // Handle click outside
+  document.addEventListener('click', (e) => {
       if (!menu.contains(e.target) && e.target !== target) {
         menu.remove();
-        console.log("Menu removed on click outside");
-      }
-    },
-    { once: true }
-  );
+    }
+  }, { once: true });
 
+  // Handle escape key
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      menu.remove();
+    }
+  }, { once: true });
+
+  document.body.appendChild(menu);
+  return menu;
 }
+
+// Update the copy event listener to immediately refresh clipboard history
+document.addEventListener("copy", (e) => {
+  const text = window.getSelection().toString().trim();
+  if (text) {
+    clipboardHistory = clipboardHistory.filter(item => item !== text);
+    clipboardHistory.unshift(text);
+    if (clipboardHistory.length > 20) {
+      clipboardHistory.pop();
+    }
+    chrome.storage.sync.set({ clipboardHistory });
+
+    // Update all open notes popups
+    document.querySelectorAll('.notes-popup').forEach(popup => {
+      const clipboardItems = popup.querySelector('.clipboard-items');
+      if (clipboardItems) {
+        const updateEvent = new CustomEvent('updateClipboard', { detail: clipboardHistory });
+        clipboardItems.dispatchEvent(updateEvent);
+      }
+    });
+  }
+});
 
 // Fuzzy search function
 function fuzzysearch(needle, haystack) {
@@ -549,34 +992,6 @@ function fuzzysearch(needle, haystack) {
   }
   return true;
 }
-
-// Listen for copy events to update clipboard history
-document.addEventListener("copy", (e) => {
-  const text = window.getSelection().toString();
-  if (text) {
-    clipboardHistory.unshift(text);
-    if (clipboardHistory.length > 20) {
-      clipboardHistory.pop();
-    }
-    chrome.storage.sync.set({ clipboardHistory });
-  }
-});
-
-// Initialize on page load
-
-// // Re-initialize on dynamic content changes
-// document.addEventListener('DOMContentLoaded', () => {
-// 	// Remove any existing listeners first
-// 	document.removeEventListener('input', handleInput);
-// 	document.removeEventListener('keydown', handleKeydown);
-
-// 	// Add listeners to document
-// 	document.addEventListener('input', handleInput);
-// 	document.addEventListener('keydown', handleKeydown);
-
-// 	// Initialize input elements
-// 	addInputListeners(document.body);
-// });
 
 // Initialize on page load
 document.addEventListener("DOMContentLoaded", () => {
@@ -602,3 +1017,65 @@ function removeExistingShortcutMenu() {
     existingMenu.remove();
   }
 }
+
+// Add this to your event listeners setup
+function setupEventListeners() {
+  document.addEventListener('input', handleInput);
+  
+  // Observe DOM changes for new input elements
+  const observer = new MutationObserver((mutations) => {
+    mutations.forEach((mutation) => {
+      mutation.addedNodes.forEach((node) => {
+        if (node.nodeType === 1) { // ELEMENT_NODE
+          if (node.matches('input[type="text"], textarea, [contenteditable="true"]')) {
+            node.addEventListener('input', handleInput);
+          }
+          node.querySelectorAll('input[type="text"], textarea, [contenteditable="true"]')
+            .forEach(el => el.addEventListener('input', handleInput));
+        }
+      });
+    });
+  });
+
+  observer.observe(document.body, {
+    childList: true,
+    subtree: true
+  });
+}
+
+// Initialize on page load
+document.addEventListener('DOMContentLoaded', setupEventListeners);
+
+// Add a debug function
+function debug(message, data = null) {
+  const DEBUG = false; // Toggle this to enable/disable logging
+  if (DEBUG) {
+    console.log(`[Debug] ${message}`, data || '');
+  }
+}
+
+function updateTemplatePreview(template, popup) {
+  const templatePreview = popup.querySelector('.template-preview');
+  templatePreview.innerHTML = '';
+
+  // Split the template text and create input fields for placeholders
+  template.text.split(/{([^}]+)}/).forEach((part, index) => {
+    if (index % 2 === 0) {
+      // Regular text
+      const textNode = document.createElement('span');
+      textNode.textContent = part;
+      templatePreview.appendChild(textNode);
+    } else {
+      // Input field for placeholder
+      const input = document.createElement('input');
+      input.type = 'text';
+      input.placeholder = part;
+      input.className = 'template-input';
+      input.style.width = `${part.length + 2}ch`; // Dynamic width based on placeholder
+      templatePreview.appendChild(input);
+    }
+  });
+}
+
+
+
