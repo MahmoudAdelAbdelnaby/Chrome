@@ -780,80 +780,118 @@ function showNotesPopup(target, isContentEditable) {
   const topicContainer = popup.querySelector('.topic-field .select-container');
   const subtopicContainer = popup.querySelector('.subtopic-field .select-container');
   
-  // Get topics from notes object
+  // Get topics and set initial topic
   const topics = Object.keys(notes);
-  
-  // Create searchable selects
-  const topicSelect = createSearchableSelect(topics, 'Search topics...', topics[0]);
-  const subtopicSelect = createSearchableSelect([], 'Search subtopics...'); // Initially empty
+  const defaultTopic = topics[0];
 
-  // Add selects to containers
+  // Create searchable selects with default topic
+  const topicSelect = createSearchableSelect(topics, 'Search topics...', defaultTopic);
   topicContainer.appendChild(topicSelect);
+
+  // Set up initial subtopics
+  const initialSubtopics = Object.keys(notes[defaultTopic] || {});
+  const subtopicSelect = createSearchableSelect(initialSubtopics, 'Search subtopics...', initialSubtopics[0]);
   subtopicContainer.appendChild(subtopicSelect);
 
-  // Set default selection for topic (first item)
-  if (topics.length > 0) {
-    const defaultTopic = topics[0];
-    const topicInput = topicSelect.querySelector('input');
-    topicInput.value = defaultTopic;
-    topicInput.setAttribute('data-value', defaultTopic);
-
-    // Handle topic selection changes
-    topicInput.addEventListener('change', (e) => {
-      const selectedTopic = e.detail;
-      updateSubtopicSelect(selectedTopic);
-    });
-
-    // Initial subtopic setup
-    updateSubtopicSelect(defaultTopic);
+  // Initial template preview
+  if (defaultTopic && initialSubtopics[0]) {
+    updateTemplatePreview(notes[defaultTopic][initialSubtopics[0]], popup);
   }
 
-  function updateSubtopicSelect(topic) {
-    const subtopics = Object.keys(notes[topic] || {});
-    const defaultSubtopic = subtopics[0] || '';
-    const newSubtopicSelect = createSearchableSelect(subtopics, 'Search subtopics...', defaultSubtopic);
+  // Add initial subtopic change listener
+  subtopicSelect.addEventListener('change', (e) => {
+    const selectedSubtopic = e.detail;
+    if (defaultTopic && selectedSubtopic && notes[defaultTopic][selectedSubtopic]) {
+      updateTemplatePreview(notes[defaultTopic][selectedSubtopic], popup);
+    }
+  });
+
+  // Update topic change handler
+  topicSelect.addEventListener('change', (e) => {
+    const selectedTopic = e.detail;
+    const subtopics = selectedTopic && notes[selectedTopic] ? Object.keys(notes[selectedTopic]) : [];
+    
+    // Create new subtopic select with filtered options
+    const newSubtopicSelect = createSearchableSelect(subtopics, 'Search subtopics...', subtopics[0]);
     subtopicContainer.innerHTML = '';
     subtopicContainer.appendChild(newSubtopicSelect);
+    
+    // Update template preview for first subtopic
+    if (selectedTopic && subtopics[0] && notes[selectedTopic][subtopics[0]]) {
+      updateTemplatePreview(notes[selectedTopic][subtopics[0]], popup);
+    }
 
-    // Handle subtopic selection changes
+    // Listen for subtopic changes
     newSubtopicSelect.addEventListener('change', (e) => {
       const selectedSubtopic = e.detail;
-      if (topic && selectedSubtopic && notes[topic][selectedSubtopic]) {
-        updateTemplatePreview(notes[topic][selectedSubtopic], popup);
+      if (selectedTopic && selectedSubtopic && notes[selectedTopic][selectedSubtopic]) {
+        updateTemplatePreview(notes[selectedTopic][selectedSubtopic], popup);
       }
     });
+  });
 
-    // Show initial template preview
-    if (defaultSubtopic && notes[topic][defaultSubtopic]) {
-      updateTemplatePreview(notes[topic][defaultSubtopic], popup);
-    }
-  }
-
-  // Add clipboard functionality with auto-refresh
-    const clipboardItems = popup.querySelector('.clipboard-items');
-  
+  // Update clipboard items with notification
   function updateClipboardHistory() {
-      clipboardItems.innerHTML = clipboardHistory
-        .map(item => `
-          <div class="clipboard-item">
-            ${item.length > 50 ? item.substring(0, 50) + '...' : item}
-          </div>
-        `)
-        .join('');
-
-      // Add click handlers for clipboard items
-      clipboardItems.querySelectorAll('.clipboard-item').forEach((item, index) => {
-        item.addEventListener('click', () => {
-          const textToCopy = clipboardHistory[index];
-          navigator.clipboard.writeText(textToCopy).then(() => {
-            item.style.backgroundColor = '#e9ecef';
-            setTimeout(() => {
+    const clipboardItems = popup.querySelector('.clipboard-items');
+    clipboardItems.innerHTML = '';
+    
+    clipboardHistory.forEach((text, index) => {
+      const item = document.createElement('div');
+      item.className = 'clipboard-item';
+      item.textContent = text.length > 50 ? text.substring(0, 50) + '...' : text;
+      
+      item.addEventListener('click', async () => {
+        try {
+          await navigator.clipboard.writeText(text);
+          
+          // Visual feedback
+          item.style.backgroundColor = '#e6fffa';
+          setTimeout(() => {
             item.style.backgroundColor = '';
-            }, 200);
+          }, 200);
+          
+          // Show notification
+          const notification = document.createElement('div');
+          notification.className = 'copy-notification';
+          notification.textContent = 'Copied to clipboard';
+          notification.style.cssText = `
+            position: fixed;
+            bottom: 24px;
+            right: 24px;
+            background-color: #10B981;
+            color: white;
+            padding: 12px 24px;
+            border-radius: 4px;
+            font-size: 14px;
+            opacity: 0;
+            transform: translateY(10px);
+            transition: all 0.3s ease;
+            z-index: 2147483647;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+          `;
+          
+          document.body.appendChild(notification);
+          
+          // Force reflow and show
+          requestAnimationFrame(() => {
+            notification.style.opacity = '1';
+            notification.style.transform = 'translateY(0)';
+            
+            // Remove after animation
+            setTimeout(() => {
+              notification.style.opacity = '0';
+              notification.style.transform = 'translateY(10px)';
+              setTimeout(() => notification.remove(), 300);
+            }, 2000);
           });
-        });
+        } catch (error) {
+          console.error('Failed to copy:', error);
+        }
       });
-    }
+      
+      clipboardItems.appendChild(item);
+    });
+  }
 
   // Initial update
   updateClipboardHistory();
@@ -901,7 +939,7 @@ function showNotesPopup(target, isContentEditable) {
     e.stopPropagation();
     if (isMinimized) {
       maximize();
-        } else {
+    } else {
       minimize();
     }
   });
@@ -930,7 +968,7 @@ function showNotesPopup(target, isContentEditable) {
       });
 
       insertText(target, templateText, isContentEditable);
-    popup.remove();
+      popup.remove();
     }
   });
 
@@ -1054,13 +1092,12 @@ function showClipboardHistory(target, isContentEditable) {
   // Store the original trigger element
   menu.triggerElement = target;
 
-  // Add menu content...
   if (clipboardHistory.length === 0) {
     const emptyMessage = document.createElement('div');
     emptyMessage.className = 'clipboard-empty';
     emptyMessage.textContent = 'No clipboard history';
     menu.appendChild(emptyMessage);
-  } else {
+      } else {
     clipboardHistory.forEach((text) => {
       const item = document.createElement('div');
       item.className = 'clipboard-item';
@@ -1076,36 +1113,20 @@ function showClipboardHistory(target, isContentEditable) {
     });
   }
 
-  // Position menu near cursor
-  const cursorPosition = getCursorCoordinates(target, isContentEditable);
-  if (cursorPosition) {
-    const { x, y } = cursorPosition;
-    menu.style.position = 'fixed';
-    
-    // Check boundaries and adjust position
-    const menuWidth = 300; // Approximate menu width
-    const menuHeight = Math.min(clipboardHistory.length * 40, 300); // Approximate menu height
-    
-    if (x + menuWidth > window.innerWidth) {
-      menu.style.left = `${window.innerWidth - menuWidth - 20}px`;
-    } else {
-      menu.style.left = `${x}px`;
-    }
-    
-    if (y + menuHeight > window.innerHeight) {
-      menu.style.top = `${y - menuHeight - 10}px`;
-    } else {
-      menu.style.top = `${y + 20}px`;
-    }
-  }
+  // Position menu
+  const rect = target.getBoundingClientRect();
+  menu.style.position = 'fixed';
+  menu.style.left = `${rect.left}px`;
+  menu.style.top = `${rect.bottom + window.scrollY}px`;
 
-  // Add event listeners...
+  // Handle click outside
   document.addEventListener('click', (e) => {
-    if (!menu.contains(e.target) && e.target !== target) {
-      menu.remove();
+      if (!menu.contains(e.target) && e.target !== target) {
+        menu.remove();
     }
   }, { once: true });
 
+  // Handle escape key
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') {
       menu.remove();
@@ -1137,7 +1158,6 @@ document.addEventListener("copy", (e) => {
     });
   }
 });
-
 // Fuzzy search function
 function fuzzysearch(needle, haystack) {
   const hlen = haystack.length;
@@ -1215,7 +1235,7 @@ document.addEventListener('DOMContentLoaded', setupEventListeners);
 
 // Add a debug function
 function debug(message, data = null) {
-  const DEBUG = false; // Toggle this to enable/disable logging
+  const DEBUG = true; // Toggle this to enable/disable logging
   if (DEBUG) {
     console.log(`[Debug] ${message}`, data || '');
   }
@@ -1422,5 +1442,36 @@ function getCursorCoordinates(element, isContentEditable) {
   };
 }
 
+function updateStats(charsSaved) {
+  chrome.storage.sync.get(['usageStats'], (result) => {
+    const stats = result.usageStats || {
+      shortcutsUsed: 0,
+      charsSaved: 0,
+      timesSaved: 0,
+      lastLogin: Date.now(),
+      recentActivity: []
+    };
 
+    // Update stats
+    stats.shortcutsUsed++;
+    stats.charsSaved += Math.max(0, charsSaved); // Ensure we don't add negative values
+    stats.timesSaved = Math.round(stats.charsSaved / 200); // Assuming 200 chars/minute typing speed
 
+    // Add to recent activity
+    const activity = {
+      text: `Used shortcut (saved ${charsSaved} characters)`,
+      timestamp: Date.now()
+    };
+    
+    stats.recentActivity = [activity, ...(stats.recentActivity || [])].slice(0, 10);
+
+    // Save updated stats
+    chrome.storage.sync.set({ usageStats: stats }, () => {
+      // Notify popup to update if it's open
+      chrome.runtime.sendMessage({
+        action: 'statsUpdated',
+        stats: stats
+      });
+    });
+  });
+}
