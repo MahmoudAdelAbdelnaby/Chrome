@@ -49,6 +49,10 @@ body {
   max-width: 600px;
   width: 100%;
   caret-color: var(--teal-500);
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
 }
 
 .app-container {
@@ -62,6 +66,9 @@ body {
   overflow: auto;
   min-width: 400px;
   min-height: 300px;
+  max-width: 800px;
+  max-height: 900px;
+  position: relative;
 }
 
 .sidebar {
@@ -323,4 +330,131 @@ body {
   width: 100vw;
   max-width: 800px;
   min-width: 400px;
+}
+
+/* Dashboard styles */
+.dashboard-welcome {
+  width: 100%;
+  padding: 1.5rem;
+  background: linear-gradient(to right, var(--teal-500), var(--teal-600));
+  border-radius: 12px;
+  color: white;
+}
+
+.dashboard-welcome h1 {
+  font-size: 1.8rem;
+  margin-bottom: 0.5rem;
+}
+
+.dashboard-stats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1rem;
+  width: 100%;
+  margin-top: 1.5rem;
+}
+
+.stat-card {
+  background: white;
+  padding: 1.5rem;
+  border-radius: 12px;
+  text-align: center;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+  transition: transform 0.2s;
+}
+
+.stat-card:hover {
+  transform: translateY(-2px);
+}
+
+.stat-icon {
+  font-size: 2rem;
+  margin-bottom: 0.5rem;
+}
+
+.stat-value {
+  font-size: 1.5rem;
+  font-weight: bold;
+  color: var(--teal-600);
+}
+
+.stat-label {
+  color: var(--gray-600);
+  margin-top: 0.25rem;
+}
+
+.dashboard-recent {
+  width: 100%;
+  margin-top: 2rem;
+}
+
+.dashboard-recent h2 {
+  color: var(--gray-800);
+  margin-bottom: 1rem;
+}
+
+.recent-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.recent-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1rem;
+  background: white;
+  border-radius: 8px;
+  border: 1px solid var(--gray-200);
+}
+
+.recent-item:hover {
+  border-color: var(--teal-500);
+}
+
+.quick-tips {
+  width: 100%;
+  margin-top: 2rem;
+  background: white;
+  border-radius: 12px;
+  padding: 1.5rem;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+.quick-tips h2 {
+  color: var(--gray-800);
+  margin-bottom: 1rem;
+}
+
+.tips-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.tip-item {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.75rem;
+  background: var(--gray-50);
+  border-radius: 8px;
+  transition: transform 0.2s;
+}
+
+.tip-item:hover {
+  transform: translateX(4px);
+}
+
+.tip-icon {
+  font-size: 1.5rem;
+}
+
+.tip-text kbd {
+  background: white;
+  padding: 2px 6px;
+  border-radius: 4px;
+  border: 1px solid var(--gray-200);
+  font-size: 0.9em;
 }

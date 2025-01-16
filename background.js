@@ -69,3 +69,31 @@ chrome.runtime.onInstalled.addListener(() => {
 // 		},
 // 	});
 // });
+
+// Keep only the tracking function in background.js
+function trackShortcutUsage(shortcutText) {
+	chrome.storage.sync.get(['usageStats'], (result) => {
+		const stats = result.usageStats || {
+			shortcutsUsed: 0,
+			charsSaved: 0,
+			lastLogin: Date.now(),
+			recentActivity: []
+		};
+
+		// Update stats
+		stats.shortcutsUsed++;
+		stats.charsSaved += shortcutText.length;
+		
+		// Add to recent activity
+		stats.recentActivity.unshift({
+			type: 'shortcut',
+			text: shortcutText.substring(0, 30) + (shortcutText.length > 30 ? '...' : ''),
+			timestamp: Date.now()
+		});
+
+		// Keep only last 10 activities
+		stats.recentActivity = stats.recentActivity.slice(0, 10);
+
+		chrome.storage.sync.set({ usageStats: stats });
+	});
+}

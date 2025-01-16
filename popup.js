@@ -7,10 +7,12 @@ document.addEventListener('DOMContentLoaded', () => {
   loadData();
   setupEventListeners();
   setupResizable();
+  updateDashboard();
+  updateDashboardStats();
 });
 
 function loadData() {
-  chrome.storage.sync.get(['shortcuts', 'notes', 'clipboardHistory', 'fuzzySearch'], (result) => {
+  chrome.storage.sync.get(['shortcuts', 'notes', 'clipboardHistory', 'fuzzySearch', 'stats'], (result) => {
     shortcuts = result.shortcuts || {};
     notes = result.notes || {};
     clipboardHistory = result.clipboardHistory || [];
@@ -20,6 +22,7 @@ function loadData() {
     renderNotes();
     renderClipboardHistory();
     document.getElementById('fuzzy-search').checked = fuzzySearch;
+    updateDashboardStats();
   });
 }
 
@@ -36,13 +39,23 @@ function populateShortcutGroups() {
 }
 
 function setupEventListeners() {
-  // Sidebar navigation
+  // Sidebar navigation - Fix
   document.querySelectorAll('.sidebar-item').forEach(item => {
     item.addEventListener('click', () => {
+      // First remove active class from all views and sidebar items
       document.querySelectorAll('.view').forEach(view => view.classList.remove('active'));
       document.querySelectorAll('.sidebar-item').forEach(i => i.classList.remove('active'));
-      document.getElementById(`${item.dataset.view}-view`).classList.add('active');
-      item.classList.add('active');
+      
+      // Get the view ID and make sure it exists
+      const viewId = `${item.dataset.view}-view`;
+      const viewElement = document.getElementById(viewId);
+      
+      if (viewElement) {
+        viewElement.classList.add('active');
+        item.classList.add('active');
+      } else {
+        console.error(`View element not found: ${viewId}`);
+      }
     });
   });
 
@@ -223,8 +236,10 @@ function addNote() {
       notes[topic] = {};
     }
     notes[topic][subtopic] = { text: template };
+    
     chrome.storage.sync.set({ notes }, () => {
       renderNotes();
+      // Clear inputs after successful save
       document.getElementById('note-topic').value = '';
       document.getElementById('note-subtopic').value = '';
       document.getElementById('note-template').value = '';
@@ -245,13 +260,11 @@ function renderNotes() {
       const subtopicElement = document.createElement('div');
       subtopicElement.className = 'note-item';
       subtopicElement.innerHTML = `
-      <div class="details">
         <strong>${subtopic}:</strong> ${data.text}
-      </div>
-      <div class="action-btns">
-        <button class="edit-btn">Edit</button>
-        <button class="delete-btn">Delete</button>
-      </div>
+        <div class="note-actions">
+          <button class="edit-btn">Edit</button>
+          <button class="delete-btn">Delete</button>
+        </div>
       `;
 
       subtopicElement.querySelector('.edit-btn').addEventListener('click', () => editNote(topic, subtopic));
@@ -296,12 +309,16 @@ function filterNotes() {
 
     Object.entries(subtopics).forEach(([subtopic, data]) => {
       if (fuzzySearch) {
-        if (fuzzysearch(query, topic.toLowerCase()) || fuzzysearch(query, subtopic.toLowerCase()) || fuzzysearch(query, data.text.toLowerCase())) {
+        if (fuzzysearch(query, topic.toLowerCase()) || 
+            fuzzysearch(query, subtopic.toLowerCase()) || 
+            fuzzysearch(query, data.text.toLowerCase())) {
           renderNoteItem(topic, subtopic, data, topicElement);
           hasMatchingSubtopics = true;
         }
       } else {
-        if (topic.toLowerCase().includes(query) || subtopic.toLowerCase().includes(query) || data.text.toLowerCase().includes(query)) {
+        if (topic.toLowerCase().includes(query) || 
+            subtopic.toLowerCase().includes(query) || 
+            data.text.toLowerCase().includes(query)) {
           renderNoteItem(topic, subtopic, data, topicElement);
           hasMatchingSubtopics = true;
         }
@@ -520,5 +537,90 @@ function setupSearchableSelect(select) {
 function setupNoteSearchDropdowns() {
   setupSearchableSelect(document.getElementById('topic-select'));
   setupSearchableSelect(document.getElementById('subtopic-select'));
+}
+
+function updateDashboard() {
+  chrome.storage.sync.get(['usageStats'], (result) => {
+    updateDashboardWithStats(result.usageStats);
+  });
+}
+
+// Call updateDashboard when popup opens and periodically
+document.addEventListener('DOMContentLoaded', () => {
+  updateDashboard();
+  setInterval(updateDashboard, 5000); // Update every 5 seconds while popup is open
+});
+
+// Function to update dashboard stats
+function updateDashboardStats() {
+  chrome.storage.sync.get(['stats'], (result) => {
+    const stats = result.stats || {
+      timesSaved: 0,
+      shortcutsUsed: 0,
+      charactersSaved: 0
+    };
+    
+    document.getElementById('time-saved').textContent = stats.timesSaved || 0;
+    document.getElementById('shortcuts-used').textContent = stats.shortcutsUsed || 0;
+    document.getElementById('chars-saved').textContent = stats.charactersSaved || 0;
+  });
+}
+
+// Call this when the popup opens and whenever stats change
+document.addEventListener('DOMContentLoaded', updateDashboardStats);
+
+// For the shortcut replacement functionality, add this event listener:
+chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+  if (request.action === 'updateStats') {
+    chrome.storage.sync.get(['stats'], (result) => {
+      const stats = result.stats || {
+        timesSaved: 0,
+        shortcutsUsed: 0,
+        charactersSaved: 0
+      };
+      
+      stats.shortcutsUsed++;
+      stats.charactersSaved += request.charsSaved;
+      stats.timesSaved = Math.round(stats.charactersSaved / 200); // Assuming 200 chars per minute typing speed
+      
+      chrome.storage.sync.set({ stats }, () => {
+        updateDashboardStats();
+      });
+    });
+  }
+});
+
+// Add message listener for stats updates
+chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+  if (request.action === 'statsUpdated') {
+    updateDashboardWithStats(request.stats);
+  }
+});
+
+function updateDashboardWithStats(stats) {
+  if (!stats) return;
+  
+  // Update stats display with proper time calculation
+  document.getElementById('shortcuts-used').textContent = (stats.shortcutsUsed || 0).toLocaleString();
+  document.getElementById('chars-saved').textContent = (stats.charsSaved || 0).toLocaleString();
+  
+  // Calculate minutes saved (200 chars per minute)
+  const minutesSaved = Math.round((stats.charsSaved || 0) / 200);
+  document.getElementById('time-saved').textContent = minutesSaved.toLocaleString();
+  
+  // Update recent activity
+  const recentList = document.getElementById('recent-activity');
+  if (stats.recentActivity && stats.recentActivity.length > 0) {
+    recentList.innerHTML = stats.recentActivity
+      .map(activity => `
+        <div class="recent-item">
+          <span class="activity-text">${activity.text}</span>
+          <span class="activity-time">${new Date(activity.timestamp).toLocaleTimeString()}</span>
+        </div>
+      `)
+      .join('');
+  } else {
+    recentList.innerHTML = '<div class="no-activity">No recent activity</div>';
+  }
 }
 

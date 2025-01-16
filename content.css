@@ -99,17 +99,18 @@
 	display: flex;
 	align-items: center;
 	gap: 2px;
+	color: black;
 }
 
 .notes-popup-title .ax {
 	color: #FF8400;
 	font-weight: bold;
-	font-size: 24px;
+	font-size: 26px;
 }
 
 .notes-popup-title .celerate {
 	color: var(--teal-600);
-	font-size: 20px;
+	font-size: 24px;
 }
 
 .notes-popup-content {
@@ -187,18 +188,28 @@
 }
 
 .clipboard-items {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
 	max-height: 300px;
 	overflow-y: auto;
 }
 
 .clipboard-item {
 	padding: 8px 12px;
-	margin-bottom: 8px;
-	background-color: #f8f9fa;
-	border: 1px solid #e9ecef;
-	border-radius: 4px;
+	background-color: var(--gray-50);
+	border-bottom: 1px solid var(--gray-200);
 	cursor: pointer;
-	color: black;
+	transition: all 0.2s ease;
+	color: var(--gray-800);
+}
+
+.clipboard-item:hover {
+	background-color: var(--gray-100);
+}
+
+.clipboard-item:last-child {
+	border-bottom: none;
 }
 
 .notes-popup-actions {
@@ -764,3 +775,24 @@
   opacity: 1;
   text-decoration: none; /* Remove underline */
 }
+
+.copy-notification {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    background-color: #10B981;
+    color: white;
+    padding: 12px 24px;
+    border-radius: 6px;
+    font-size: 14px;
+    opacity: 0;
+    transform: translateY(20px);
+    transition: all 0.3s ease;
+    z-index: 2147483647;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+  }
+  
+  .copy-notification.show {
+    opacity: 1;
+    transform: translateY(0);
+  }
